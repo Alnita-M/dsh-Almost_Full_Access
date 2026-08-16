@@ -1,0 +1,58 @@
+{
+  "name": "dsh-almost-full-access",
+  "version": "1.0.0",
+  "description": "dsh-Almost Full Access - 介于 workspace-write 与 Full access 之间的权限模式：每条命令先经确定性规则 + 子代理审查，危险命令弹出风格A简约审批面板（允许/拒绝/记住本次会话），支持会话记忆自动放行与审计日志。静态插件包，DSH 重启后自动加载。",
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/<your-github-username>/dsh-almost-full-access.git"
+  },
+  "homepage": "https://github.com/<your-github-username>/dsh-almost-full-access#readme",
+  "bugs": "https://github.com/<your-github-username>/dsh-almost-full-access/issues",
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "permission",
+    "approval",
+    "security",
+    "almost-full-access",
+    "命令审批"
+  ],
+  "bin": {
+    "dsh-afaccess-install": "scripts/install.mjs"
+  },
+  "files": [
+    "lib/",
+    "cordis.patch.yml",
+    "scripts/install.mjs",
+    "assets/afaccess-logo.svg",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-primitives"
+      ]
+    }
+  },
+  "scripts": {
+    "check": "node --check lib/index.js && node --check lib/client.js && node --check scripts/install.mjs"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="Almost Full Access">
+  <!-- 左半盾牌：受限/受保护（青绿实心） -->
+  <path d="M24 4 C18.5 4 13.5 6 9 8.5 L9 23 C9 33 15.5 41 24 44 Z" fill="#0d9488"/>
+  <!-- 右半盾牌：开放（琥珀实心） -->
+  <path d="M24 4 C29.5 4 34.5 6 39 8.5 L39 23 C39 33 32.5 41 24 44 Z" fill="#f59e0b"/>
+  <!-- 中央审查放大镜（白色描边） -->
+  <circle cx="24" cy="22" r="8.5" fill="none" stroke="#ffffff" stroke-width="3"/>
+  <!-- 镜片内对勾：审查通过/安全放行 -->
+  <path d="M20.5 22 L23 24.5 L27.5 19.5" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 放大镜手柄 -->
+  <line x1="30.5" y1="28.5" x2="36.5" y2="34.5" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+</svg>
