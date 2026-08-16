@@ -3,7 +3,7 @@
  * dsh-Almost Full Access — 一键安装器
  * ============================================================
  * 用法：
- *   npx --yes github:<your-github-username>/dsh-almost-full-access [options]
+ *   npx --yes github:Alnita-M/dsh-Almost_Full_Access [options]
  *   或本地：node scripts/install.mjs [options]
  *
  * 选项：
@@ -32,7 +32,7 @@ if (args.has("--help")) {
 	console.log(`dsh-almost-full-access installer
 
 Usage:
-  npx --yes github:<your-github-username>/dsh-almost-full-access [options]
+  npx --yes github:Alnita-M/dsh-Almost_Full_Access [options]
 
 Options:
   --check      Verify the installed package and Cordis patch without changing them

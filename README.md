@@ -26,7 +26,7 @@
 ### 方式 A：npx（从 GitHub 直接安装，推荐）
 
 ```bash
-npx --yes github:<your-github-username>/dsh-almost-full-access
+npx --yes github:Alnita-M/dsh-Almost_Full_Access
 ```
 
 ### 方式 B：npm 全局安装后运行安装器
@@ -39,7 +39,7 @@ dsh-afaccess-install
 ### 方式 C：本地开发
 
 ```bash
-git clone https://github.com/<your-github-username>/dsh-almost-full-access.git
+git clone https://github.com/Alnita-M/dsh-Almost_Full_Access.git
 cd dsh-almost-full-access
 node scripts/install.mjs --dry-run   # 先预览
 node scripts/install.mjs             # 实际安装
@@ -96,7 +96,7 @@ assets/afaccess-logo.svg  徽章 logo（盾牌 + 审查放大镜）
 ```bash
 # GitHub
 git init && git add -A && git commit -m "release v1.0.0"
-git remote add origin git@github.com:<your-github-username>/dsh-almost-full-access.git
+git remote add origin git@github.com:Alnita-M/dsh-Almost_Full_Access.git
 git push -u origin main
 
 # npm（记得先改 package.json 的 repository 字段并 `npm login`）

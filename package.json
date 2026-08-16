@@ -5,10 +5,10 @@
   "private": false,
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/<your-github-username>/dsh-almost-full-access.git"
+    "url": "git+https://github.com/Alnita-M/dsh-Almost_Full_Access.git"
   },
-  "homepage": "https://github.com/<your-github-username>/dsh-almost-full-access#readme",
-  "bugs": "https://github.com/<your-github-username>/dsh-almost-full-access/issues",
+  "homepage": "https://github.com/Alnita-M/dsh-Almost_Full_Access#readme",
+  "bugs": "https://github.com/Alnita-M/dsh-Almost_Full_Access/issues",
   "keywords": [
     "deepseek",
     "deepseek-harness",
