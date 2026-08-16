@@ -52,7 +52,8 @@
     }
   },
   "scripts": {
-    "check": "node --check lib/index.js && node --check lib/client.js && node --check scripts/install.mjs"
+    "check": "node --check lib/index.js && node --check lib/analyze.js && node --check lib/client.js && node --check scripts/install.mjs && node --check scripts/test.mjs",
+    "test": "node scripts/test.mjs"
   },
   "license": "MIT"
 }
