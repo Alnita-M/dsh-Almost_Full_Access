@@ -16,7 +16,7 @@
         sandbox: danger-full-access
         approval: never
         name: 🛡️ Almost Full Access
-        description: Full file access, but every command is first reviewed by a subagent; commands that may affect files outside the workspace, normal boot, or system drivers require explicit approval.
+        description: Full file access, but every pwsh/bash shell command is first reviewed by rules and a subagent; commands that may affect files outside the workspace, normal boot, or system drivers require explicit approval.
       danger-full-access:
         sandbox: danger-full-access
         approval: never

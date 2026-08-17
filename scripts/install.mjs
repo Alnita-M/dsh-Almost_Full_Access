@@ -46,7 +46,7 @@ Set DSH_HOME to override the default ~/.dsh location.`);
 
 const PKG_NAME = "dsh-almost-full-access";
 const PLUGIN_LINE = /^\s+name:\s*dsh-almost-full-access\s*$/gm;
-const PERMISSION_ID_LINE = /^\s*-\s+id:\s*permission\s*$/gm;
+const PERMISSION_ID_LINE = /^-\s+id:\s*permission\s*$/gm;
 
 const sourceRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const sourcePackage = JSON.parse(await readFile(join(sourceRoot, "package.json"), "utf8"));
@@ -68,7 +68,7 @@ const PERMISSION_BLOCK = `# dsh-Almost Full Access: 权限模式预设（介于 
         sandbox: danger-full-access
         approval: never
         name: 🛡️ Almost Full Access
-        description: Full file access, but every command is first reviewed by a subagent; commands that may affect files outside the workspace, normal boot, or system drivers require explicit approval.
+        description: Full file access, but every pwsh/bash shell command is first reviewed by rules and a subagent; commands that may affect files outside the workspace, normal boot, or system drivers require explicit approval.
       danger-full-access:
         sandbox: danger-full-access
         approval: never
@@ -111,7 +111,8 @@ function withoutEmptySequenceRoot(text) {
 function replacePermissionBlock(text) {
 	const lines = String(text).split(/\r?\n/);
 	const meaningful = meaningfulPatchLines(text);
-	const start = meaningful.find(({ content }) => /^-?\s*id:\s*permission\s*$/.test(content) || content === "- id: permission");
+	// A11：只匹配顶层（缩进 0）的 `- id: permission`，避免命中 insert 块内嵌套的同名行
+	const start = meaningful.find(({ indent, content }) => indent === 0 && (content === "- id: permission" || /^-?\s*id:\s*permission\s*$/.test(content)));
 	if (start === void 0) return { text: withoutEmptySequenceRoot(text), replaced: false };
 	// 下一个顶层条目（缩进 0 且以 "- " 开头，且不是该块自身的延续）
 	let end = lines.length;

@@ -2,10 +2,10 @@
 
 介于 **workspace-write** 与 **Full access** 之间的权限模式，专为 [DeepSeek Harness](https://github.com/deepseek-ai) (dsh) Web 版设计。
 
-在该模式下，文件沙箱与 Full access 相同（无限制），但**每一条 shell 命令**都会先经过两层审查：
+在该模式下，文件沙箱与 Full access 相同（无限制），但**每一条 pwsh/bash 等 shell 命令**都会先经过两层审查：
 
-1. **确定性快路径（毫秒级）**：危险动词表（`bcdedit` / `diskpart` / `Stop-Service` / `pnputil` / `takeown` / `reg add HKLM` / `winget` …）+ 工作区外写路径包含判断（与沙箱同款边界逻辑，支持 `C:\`、`%TEMP%`、`$env:`、UNC、注册表路径）。
-2. **LLM 子代理兜底**：只有动态/间接命令（`iex`、`Invoke-WebRequest`、下载、外部程序调用等）才起子代理审查。
+1. **确定性快路径（毫秒级）**：危险动词表（`bcdedit` / `diskpart` / `Stop-Service` / `pnputil` / `takeown` / `reg add HKLM` / `winget` / PowerShell 别名 `ri` `ni` `sc` `sp` …）+ 工作区外写路径包含判断（支持 `C:\`、`%TEMP%`、`$env:`、UNC、注册表路径、`..\` 相对路径穿越）+ .NET 静态调用/动态拼接/反引号等间接构造一律交子代理。
+2. **LLM 子代理兜底**：只有动态/间接命令（`iex`、`Invoke-WebRequest`、下载、`.NET` 调用、调用运算符、字符串拼接、`$(…)`、外部程序调用等）才起子代理审查；**确定性命中的风险锁定为必审批，子代理无法改判放行**。
 
 命中风险 → 弹出**风格 A 简约审批面板**（悬浮于输入框上方，蓝色品牌盾牌 logo）：
 
@@ -14,7 +14,7 @@
 - 逐条影响列表（高风险首条红色强调）
 - 工作区/工作目录上下文
 - **允许执行**（左，次按钮）/ **拒绝执行**（右，主按钮）· `Esc` = 拒绝
-- **记住本次会话的此类操作**：同类命令（按类别键如 `sys:service`、`write-outside`）此后自动按记忆决策，不再弹面板
+- **记住本次会话的此命令**：以命令哈希为键，仅内容完全相同的命令免重复审批（同类不同命令仍需确认）；高风险（引导类）命令不可记忆
 - 10 分钟未决自动拒绝；Client 面板不可用时自动降级为文本审批卡
 
 安全命令毫秒放行、零开销；切回其它权限模式（只读/工作区/Full access）时门控自动关闭。
@@ -81,15 +81,18 @@ scripts/install.mjs    一键安装器（复制 + patch 幂等更新）
 assets/afaccess-logo.svg  徽章 logo（盾牌 + 审查放大镜）
 ```
 
-- Host 端点：`GET /api/afaccess/queue`（轮询）、`POST /api/afaccess/decide`（决策）
-- 审计日志：工作区根目录 `.afaccess-debug.log`（每条命令的审查结论与审批结果）
+- Host 端点：`GET /api/afaccess/queue`（轮询）、`POST /api/afaccess/decide`（决策，要求 `x-afaccess-client: 1` 请求头 + 回环 Origin，防 CSRF）
+- 审计日志：`$DSH_HOME/afaccess/afaccess.log`（审查结论与审批结果，密钥模式已脱敏）
 - 诊断：`afaccess_status` 模型工具（状态 / 计数 / 队列 / 会话记忆）
 
 ## 🔒 安全说明
 
-- 默认拒绝：无法审查、面板不可达、超时未决一律按拒绝处理；
-- 会话记忆仅存于进程内存，不持久化，重启即清；
-- 决策链路：审批队列（Host）→ 浏览器面板 → `decide` 端点校验 `approvalId` 归属后生效，先到先得。
+- 默认拒绝：无法审查、面板不可达、超时未决、命令被中止一律按拒绝处理；
+- 确定性命中 → 必审批：LLM 子代理只能裁决「仅模糊」的命令，不能把确定性风险改判放行；
+- 审查提示词声明命令文本完全不可信（防提示注入），代码围栏对 ``` 转义；
+- 会话记忆仅存于进程内存（键=命令哈希），不持久化，重启即清；高风险命令不可记忆；
+- 决策链路：审批队列（Host）→ 浏览器面板 → `decide` 端点校验随机 `approvalId` + 回环 Origin + 自定义头后生效，先到先得；
+- 门控覆盖 `pwsh`/`bash`/`powershell`/`cmd` 等 shell 执行工具；若宿主注册了其它命令执行工具，不在本插件审查范围内——请在可信任务中使用本预设。
 
 ## 📦 发布
 
