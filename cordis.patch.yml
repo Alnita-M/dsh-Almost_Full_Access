@@ -1,8 +1,10 @@
 # dsh-Almost Full Access — bundle patch（作为 profile bundle 注册时 loader 自动应用；
 # 一键安装脚本会把同样的两块内容写入 profile 的 cordis.patch.yml）
 #
-# 1) permission 预设表覆盖：在 workspace-write 与 Full access 之间插入
-#    🛡️ almost-full-access 模式（config 为整体替换，故完整声明全部预设）
+# 1) permission 预设表覆盖：两个审查模式
+#    🛡️ Lenient（宽松：只拦不可逆损失/影响系统正确运行的严肃命令，动态命令直接放行）
+#    🛡️ Strict（严肃：每一条 shell 命令先经规则 + 子代理审查）
+#    config 为整体替换，故完整声明全部预设。
 - id: permission
   config:
     presets:
@@ -12,10 +14,15 @@
       workspace-write:
         sandbox: workspace-write
         approval: ask
-      almost-full-access:
+      lenient:
         sandbox: danger-full-access
         approval: never
-        name: 🛡️ Almost Full Access
+        name: 🛡️ Fast Mode
+        description: Full file access with lightweight review — only irreversible actions (deletes, uninstalls, formatting) and changes that affect normal boot or system/drivers require approval; dynamic commands run without review.
+      strict:
+        sandbox: danger-full-access
+        approval: never
+        name: 🛡️ Safe Mode
         description: Full file access, but every pwsh/bash shell command is first reviewed by rules and a subagent; commands that may affect files outside the workspace, normal boot, or system drivers require explicit approval.
       danger-full-access:
         sandbox: danger-full-access

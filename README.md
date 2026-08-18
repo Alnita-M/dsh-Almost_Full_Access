@@ -2,9 +2,18 @@
 
 介于 **workspace-write** 与 **Full access** 之间的权限模式，专为 [DeepSeek Harness](https://github.com/deepseek-ai) (dsh) Web 版设计。
 
-在该模式下，文件沙箱与 Full access 相同（无限制），但**每一条 pwsh/bash 等 shell 命令**都会先经过两层审查：
+## 两种审查模式
 
-1. **确定性快路径（毫秒级）**：危险动词表（`bcdedit` / `diskpart` / `Stop-Service` / `pnputil` / `takeown` / `reg add HKLM` / `winget` / PowerShell 别名 `ri` `ni` `sc` `sp` …）+ 工作区外写路径包含判断（支持 `C:\`、`%TEMP%`、`$env:`、UNC、注册表路径、`..\` 相对路径穿越）+ .NET 静态调用/动态拼接/反引号等间接构造一律交子代理。
+| 模式 | 行为 |
+|---|---|
+| **🛡️ Fast Mode**（宽松） | 只拦**不可逆损失**（删除/卸载/格式化/分区）与**影响系统正确运行**的严肃命令（引导、服务、驱动、系统注册表、账户、策略等）；写系统关键路径也拦。动态命令、安装软件、工作区外可逆写（新建/复制/解压到普通位置）直接放行，不弹面板。 |
+| **🛡️ Safe Mode**（严肃审查） | **每一条 pwsh/bash 等 shell 命令**先经过两层审查（见下）；任何工作区外写、系统级变更、动态命令都进审查/审批。 |
+
+两个模式都提供 Full access 的文件能力；切换入口在权限选择器中（Fast Mode 与 Safe Mode 相邻）。
+
+## Safe Mode 的两层审查
+
+1. **确定性快路径（毫秒级）**：危险动词表（`bcdedit` / `diskpart` / `Stop-Service` / `pnputil` / `takeown` / `reg add HKLM` / `winget` / PowerShell 别名 `ri` `ni` `sc` `sp` …）+ 工作区外写路径包含判断（支持 `C:\`、`%TEMP%`、`$env:`、UNC、注册表路径、`..\` 相对路径穿越、`/etc` 等 POSIX 路径）+ .NET 静态调用/动态拼接/反引号等间接构造一律交子代理。
 2. **LLM 子代理兜底**：只有动态/间接命令（`iex`、`Invoke-WebRequest`、下载、`.NET` 调用、调用运算符、字符串拼接、`$(…)`、外部程序调用等）才起子代理审查；**确定性命中的风险锁定为必审批，子代理无法改判放行**。
 
 命中风险 → 弹出**风格 A 简约审批面板**（悬浮于输入框上方，蓝色品牌盾牌 logo）：
@@ -57,7 +66,7 @@ node scripts/install.mjs             # 实际安装
 
 1. **重启 dsh web**（静态插件随 DSH 启动自动加载，无需在会话中激活）；
 2. 硬刷新浏览器（Ctrl+Shift+R）；
-3. 在会话权限选择器中切换到 **🛡️ Almost Full Access**（位于 workspace-write 与 Full access 之间）；
+3. 在会话权限选择器中切换到 **🛡️ Fast Mode**（宽松）或 **🛡️ Safe Mode**（严肃审查）；
 4. 输入命令即可体验：安全命令毫秒放行，危险命令弹出审批面板。
 
 卸载：删除 `~/.dsh/profiles/node_modules/dsh-almost-full-access/` 并从

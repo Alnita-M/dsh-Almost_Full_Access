@@ -230,13 +230,17 @@ check("无占位符残留", !JSON.stringify(pkg).includes("your-github-username"
 // ============ 6. patch 内容 ============
 console.log("\n[6] cordis.patch.yml");
 const patch = readFileSync(join(root, "cordis.patch.yml"), "utf8");
-check("含 almost-full-access 档位", patch.includes("almost-full-access"));
-check("档位名带 🛡️", patch.includes("🛡️ Almost Full Access"));
+check("含 lenient 档位", patch.includes("lenient:"));
+check("含 strict 档位", patch.includes("strict:"));
+check("档位名带 🛡️ Fast Mode", patch.includes("🛡️ Fast Mode"));
+check("档位名带 🛡️ Safe Mode", patch.includes("🛡️ Safe Mode"));
+check("strict 位于 lenient 之后（UI 右侧）", patch.indexOf("lenient:") < patch.indexOf("strict:"), "顺序错误");
 check("sandbox=danger-full-access", patch.includes("sandbox: danger-full-access"));
 check("含 permission 预设覆盖", patch.includes("- id: permission"));
 check("含插件挂载", patch.includes("name: dsh-almost-full-access"));
 check("含 read-only / workspace-write / danger-full-access 完整预设", ["read-only", "workspace-write", "danger-full-access"].every((k) => patch.includes(k)));
-check("描述声明 pwsh/bash 边界（A3）", patch.includes("every pwsh/bash shell command"), patch.split("\n").find((l) => l.includes("description")));
+check("strict 描述声明 pwsh/bash 边界（A3）", patch.includes("every pwsh/bash shell command"), patch.split("\n").find((l) => l.includes("description")));
+check("lenient 描述声明轻量审查", patch.includes("lightweight review"), patch.split("\n").find((l) => l.includes("description")));
 
 // ============ 7. 语法检查 ============
 console.log("\n[7] 语法检查");
@@ -279,7 +283,7 @@ const INSERT_ONLY = `# 其它插件
 	const c = patchCounts(out);
 	check("空 patch → 组合后 permission=1", c.permission === 1, String(c.permission));
 	check("空 patch → 组合后 plugin=1", c.plugin === 1, String(c.plugin));
-	check("空 patch → 含 almost-full-access 档位", out.includes("almost-full-access"));
+	check("空 patch → 含 lenient 档位", out.includes("lenient"));
 }
 
 // 9b 仅有 insert 块、无 permission：追加预设而非丢失（关键回归）
@@ -325,7 +329,7 @@ const INSERT_ONLY = `# 其它插件
 `;
 	const r = replacePermissionBlock(bomPatch);
 	check("BOM patch → replacePermissionBlock 命中替换", r.replaced === true, "replaced=false");
-	check("BOM patch → 输出含预设档位", r.text.includes("almost-full-access"));
+	check("BOM patch → 输出含 lenient 档位", r.text.includes("lenient"));
 	check("BOM patch → 计数正确", patchCounts(r.text).permission === 1, patchCounts(r.text).permission);
 }
 
@@ -334,7 +338,7 @@ const INSERT_ONLY = `# 其它插件
 	const crlf = "- id: permission\r\n  config:\r\n    presets:\r\n      read-only:\r\n        sandbox: read-only\r\n        approval: ask\r\n";
 	const r = replacePermissionBlock(crlf);
 	check("CRLF patch → 替换成功", r.replaced === true);
-	check("CRLF patch → 含档位", r.text.includes("almost-full-access"));
+	check("CRLF patch → 含 lenient 档位", r.text.includes("lenient"));
 }
 
 // 9g 重复 permission 块：解析计数应 >1（触发 verify 报错，而不是静默）
@@ -470,6 +474,53 @@ const SAFE_REGRESSION = ["Get-Date", "git status", "npm install", "Get-ChildItem
 for (const cmd of SAFE_REGRESSION) {
 	const r = analyze(cmd);
 	check(`regression safe: ${cmd.slice(0, 40)}`, r.impacts.length === 0 && !r.ambiguous, JSON.stringify(r));
+}
+
+// ============ 11. Lenient / Strict 双模式差异（v1.1.0）============
+console.log("\n[11] Lenient / Strict 双模式差异（v1.1.0）");
+const LEN = (cmd) => analyzeCommand(cmd, WS, "", "lenient");
+
+console.log("  -- Lenient 也拦（不可逆损失 / 影响系统正确运行）");
+const LEN_BLOCK = [
+	["Stop-Service -Name Spooler -Force", "sys:service"],
+	["rm -f /etc/passwd", "write-outside"],
+	["Remove-Item C:\\Users\\other\\a.txt", "write-outside"],
+	["winget uninstall notepadplusplus", "sys:uninstall"],
+	["pip uninstall requests", "sys:uninstall"],
+	["msiexec /x foo.msi", "sys:uninstall"],
+	["reg add HKLM\\Software\\Test /v x /d 1 /f", "sys:hklm"],
+	["bcdedit /enum {current}", "boot:bcdedit"],
+	["setx PATH \"C:\\x\" /M", "sys:env"],
+	["Set-Content C:\\Windows\\System32\\drivers\\etc\\hosts x", "write-outside"],
+	["tar -xvf /tmp/x.tar -C /etc", "write-outside"],
+	["shutdown /r /t 0", "boot:shutdown"]
+];
+for (const [cmd, expectId] of LEN_BLOCK) {
+	const r = LEN(cmd);
+	check(`lenient block: ${cmd.slice(0, 40)} -> ${expectId}`, r.impacts.length > 0 && r.ruleIds.includes(expectId), JSON.stringify(r));
+}
+
+console.log("  -- Lenient 放行（strict 对应拦截/送审）");
+const LEN_FREE = [
+	["winget install notepadplusplus", "sys:software"],
+	["pip install requests", "sys:packages"],
+	["Set-Content -Path C:\\Users\\other\\a.txt -Value x", "write-outside"],
+	["Set-ItemProperty HKCU:\\Software\\Test -Name x -Value 1", "reg:HKCU"],
+	["New-Item -Path 'C:\\Users\\other\\x.txt'", "write-outside"],
+	["sudo apt update", "sys:bash"],
+	["Expand-Archive -Path a.zip -DestinationPath 'C:\\Users\\other\\out'", "write-outside"]
+];
+for (const [cmd, strictRule] of LEN_FREE) {
+	const r = LEN(cmd);
+	const strict = analyze(cmd);
+	check(`lenient free: ${cmd.slice(0, 38)}（strict=${strictRule}）`, r.impacts.length === 0 && !r.ambiguous, "lenient=" + JSON.stringify(r) + " strict=" + JSON.stringify(strict.ruleIds));
+}
+
+console.log("  -- Lenient 动态命令直接放行（strict 送 LLM）");
+for (const cmd of ["iex 'Write-Output 1'", "curl -o C:\\Users\\other\\x.exe http://x", "& ('Remove'+'-Item') C:\\Users\\other\\file.txt"]) {
+	const r = LEN(cmd);
+	const strict = analyze(cmd);
+	check(`lenient dynamic: ${cmd.slice(0, 40)}`, r.impacts.length === 0 && !r.ambiguous && strict.ambiguous === true, "lenient=" + JSON.stringify(r));
 }
 
 // ============ 汇总 ============

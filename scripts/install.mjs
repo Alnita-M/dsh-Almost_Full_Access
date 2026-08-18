@@ -96,7 +96,7 @@ if (args.has("--dry-run")) {
 	console.log(`Would install ${sourcePackage.name}@${sourcePackage.version}`);
 	console.log(`  package: ${target}`);
 	console.log(`  patch:   ${enable ? patchPath : "unchanged (--no-enable)"}`);
-	console.log(`  preset:  almost-full-access (sandbox=danger-full-access, approval=never)`);
+	console.log(`  preset:  lenient (🛡️ Fast Mode 宽松) + strict (🛡️ Safe Mode 严肃)`);
 	process.exit(0);
 }
 
@@ -132,4 +132,4 @@ if (enable) {
 
 await verify(enable);
 console.log("Installation complete. Restart dsh web, then hard-refresh the browser.");
-console.log("启用方式：在会话权限选择器中切换到「🛡️ Almost Full Access」。");
+console.log("启用方式：在会话权限选择器中切换到「🛡️ Fast Mode」（宽松）或「🛡️ Safe Mode」（严肃审查）。");

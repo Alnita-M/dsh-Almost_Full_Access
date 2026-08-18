@@ -1,6 +1,6 @@
 {
   "name": "dsh-almost-full-access",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "description": "dsh-Almost Full Access - 介于 workspace-write 与 Full access 之间的权限模式：每条命令先经确定性规则 + 子代理审查，危险命令弹出风格A简约审批面板（允许/拒绝/记住本次会话），支持会话记忆自动放行与审计日志。静态插件包，DSH 重启后自动加载。",
   "private": false,
   "repository": {
