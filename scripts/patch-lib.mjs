@@ -13,7 +13,7 @@
  */
 export const PKG_NAME = "dsh-almost-full-access";
 
-export const PERMISSION_BLOCK = `# dsh-Almost Full Access: 权限模式预设（🛡️ Almost Full Access，含 Fast/Safe 分支）
+export const PERMISSION_BLOCK = `# dsh-Almost Full Access: 权限模式预设（🛡️ Almost Full Access）
 - id: permission
   config:
     presets:
@@ -27,7 +27,7 @@ export const PERMISSION_BLOCK = `# dsh-Almost Full Access: 权限模式预设（
         sandbox: danger-full-access
         approval: never
         name: 🛡️ Almost Full Access
-        description: Full file access with two review branches — Fast Mode (only irreversible losses and changes affecting normal boot or system/drivers require approval) and Safe Mode (every pwsh/bash shell command reviewed by rules and a subagent). Switch branches beside the access-mode control in the input bar.
+        description: Full file access with lightweight checks — only irreversible actions (deletes, uninstalls, formatting) and changes that affect normal boot or system/drivers require approval; dynamic/indirect commands are reviewed by a subagent before execution.
       danger-full-access:
         sandbox: danger-full-access
         approval: never

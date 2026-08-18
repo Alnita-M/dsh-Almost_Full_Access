@@ -96,7 +96,7 @@ if (args.has("--dry-run")) {
 	console.log(`Would install ${sourcePackage.name}@${sourcePackage.version}`);
 	console.log(`  package: ${target}`);
 	console.log(`  patch:   ${enable ? patchPath : "unchanged (--no-enable)"}`);
-	console.log(`  preset:  almost-full-access (🛡️ Almost Full Access，含 Fast/Safe 分支)`);
+	console.log(`  preset:  almost-full-access (🛡️ Almost Full Access：轻量规则 + 动态命令子代理审查)`);
 	process.exit(0);
 }
 
@@ -132,4 +132,4 @@ if (enable) {
 
 await verify(enable);
 console.log("Installation complete. Restart dsh web, then hard-refresh the browser.");
-console.log("启用方式：切换到「🛡️ Almost Full Access」后，在输入框工具行权限模式控件右侧的 Fast/Safe 选择器切换审查分支。");
+console.log("启用方式：在会话权限选择器中切换到「🛡️ Almost Full Access」。");

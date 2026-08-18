@@ -2,16 +2,17 @@
 
 介于 **workspace-write** 与 **Full access** 之间的权限模式，专为 [DeepSeek Harness](https://github.com/deepseek-ai) (dsh) Web 版设计。
 
-## 一种权限预设 · 两个审查分支
+## 一种权限预设 · 轻量规则 + 动态命令子代理审查
 
-切换到 **🛡️ Almost Full Access**（位于 workspace-write 与 Full access 之间）后，输入框工具行上**权限模式控件右侧**会出现分支选择器：
+切换到 **🛡️ Almost Full Access**（位于 workspace-write 与 Full access 之间）后：
 
-| 分支 | 行为 |
-|---|---|
-| **Fast**（宽松） | 只拦**不可逆损失**（删除/卸载/格式化/分区）与**影响系统正确运行**的严肃命令（引导、服务、驱动、系统注册表、账户、策略等）；写系统关键路径（C:\Windows、Program Files、/etc 等）也拦。动态命令、安装软件、工作区外可逆写（新建/复制/解压到普通位置）直接放行。 |
-| **Safe**（严肃审查，默认） | **每一条 pwsh/bash 等 shell 命令**先经过两层审查（见下）；任何工作区外写、系统级变更、动态命令都进审查/审批。 |
+**确定性规则（毫秒级，命中即弹审批面板）** 只拦两类：
+1. **不可逆损失**：删除/清空/覆写粉碎（rm、ri、Remove-Item、shred、truncate…）、卸载（winget/pip/npm uninstall、msiexec /x…）、格式化/分区；
+2. **影响系统正确运行**：引导、服务、驱动、系统注册表（HKLM）、账户、策略、防火墙、计划任务、卷影副本、`setx /M`，以及**写系统关键路径**（C:\Windows、Program Files、ProgramData、/etc、/usr、`\\.\PhysicalDriveN` 等）。
 
-分支选择按会话记忆（默认 Safe），切换立即生效，不需要重启。
+**动态/间接命令（交 LLM 子代理快审）**：`iex`、`curl`/下载执行、`Start-Process`、`ssh`、`sudo`、脚本调用、`.NET` 写类调用、拼接构造等——子代理判 safe 直接放行，判 risky 才弹面板；同命令 5 分钟内复用审查结果。
+
+**直接放行（可逆、用户级）**：工作区外新建/复制/解压到普通路径、HKCU 用户注册表、安装软件（winget/pip/msiexec /i）、`setx`（无 /M）、工作区内一切操作。
 
 ## Safe Mode 的两层审查
 
