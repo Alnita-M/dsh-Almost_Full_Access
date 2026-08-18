@@ -140,20 +140,29 @@ for (const [cmd, label] of ALIAS_DANGER) {
 	check(`${label}: ${cmd.slice(0, 48)}`, r.impacts.length > 0 && r.ruleIds.includes("write-outside"), JSON.stringify(r));
 }
 
-console.log("  -- .NET / 拼接 / 调用运算符 / 反引号 / $(…) 应判 ambiguous");
+console.log("  -- 动态构造（调用运算符/写类 .NET/反引号）应判 ambiguous");
 const AMB2 = [
 	"[IO.File]::WriteAllText('C:\\Windows\\a.txt','x')",
-	"[Math]::Sqrt(2)",
+	"[Registry]::SetValue('HKLM\\Software\\X','v','1')",
 	"& ('Remove'+'-Item') C:\\Users\\other\\file.txt",
 	"& 'Remove-Item' C:\\x",
 	"& $fn C:\\x",
-	"Write-Output (\"a\"+\"b\")",
-	"Remove-It`em C:\\x",
-	"Write-Output \"x $(Get-Date)\""
+	"Remove-It`em C:\\x"
 ];
 for (const cmd of AMB2) {
 	const r = analyze(cmd);
 	check(`ambiguous: ${cmd.slice(0, 44)}`, r.ambiguous === true, JSON.stringify(r));
+}
+
+console.log("  -- 写意图命令中的拼接/$(…) 仍送审（v1.1.1 条件化）");
+const AMB_COND = [
+	"Set-Content -Path x.txt -Value ('a'+'b')",
+	"Set-Content -Path x.txt -Value \"$(Get-Date)\"",
+	"Add-Content -Path $env:TEMP\\x.txt -Value ('a'+'b')"
+];
+for (const cmd of AMB_COND) {
+	const r = analyze(cmd);
+	check(`amb-write: ${cmd.slice(0, 44)}`, r.ambiguous === true, JSON.stringify(r));
 }
 
 // .NET 写文件额外要求命中确定性 write-outside（引号目标被提取）
@@ -441,7 +450,14 @@ const QUIET = [
 	"msbuild x.csproj",
 	"apt search htop",
 	"systemctl status sshd",
-	"Get-Content C:\\Windows\\System32\\drivers\\etc\\hosts"
+	"Get-Content C:\\Windows\\System32\\drivers\\etc\\hosts",
+	"[Math]::Sqrt(2)",
+	"[DateTime]::Now",
+	"[Console]::WriteLine('hi')",
+	"Write-Output (\"a\"+\"b\")",
+	"Write-Output \"x $(Get-Date)\"",
+	"Get-Process & Get-Date",
+	"Get-ChildItem C:\\Windows -Filter *.dll"
 ];
 for (const cmd of QUIET) {
 	const r = analyze(cmd);
@@ -518,6 +534,59 @@ for (const cmd of ["iex 'Write-Output 1'", "curl -o C:\\Users\\other\\x.exe http
 	const r = LEN(cmd);
 	const strict = analyze(cmd);
 	check(`lenient dynamic: ${cmd.slice(0, 40)}`, r.impacts.length === 0 && !r.ambiguous && strict.ambiguous === true, "lenient=" + JSON.stringify(r));
+}
+
+// ============ 12. Fast 模式严防死守（v1.1.1 补漏）============
+console.log("\n[12] Fast 模式严防死守（v1.1.1）");
+
+console.log("  -- 删除类别名/覆写粉碎（不可逆）");
+const FAST_DELETE = [
+	["ri C:\\Users\\other\\a.txt", "ri=Remove-Item 别名删除"],
+	["shred -u /etc/passwd", "shred 覆写删除"],
+	["truncate -s 0 C:\\Users\\other\\data.bin", "truncate 清空"],
+	["deltree /y C:\\Users\\other\\x", "deltree"]
+];
+for (const [cmd, label] of FAST_DELETE) {
+	const r = LEN(cmd);
+	check(`fast delete: ${label}`, r.impacts.length > 0 && r.ruleIds.includes("write-outside"), JSON.stringify(r));
+}
+
+console.log("  -- 下载落地/解压到系统关键路径");
+const FAST_CRITICAL = [
+	["curl -o C:\\Windows\\evil.exe http://x", "curl -o 系统目录"],
+	["curl -o 'C:\\Windows\\Temp\\x.dll' http://x", "curl -o 系统目录(引号)"],
+	["certutil -urlcache -split -f http://x/a.exe C:\\Windows\\a.exe", "certutil 落地系统目录"],
+	["bitsadmin /transfer job /download http://x/a.exe C:\\Windows\\a.exe", "bitsadmin 落地系统目录"],
+	["Replace-Item -Path C:\\Windows\\System32\\drivers\\etc\\hosts -Value x", "Replace-Item 系统文件"],
+	["tar -xvf x.tar -C C:\\Windows\\System32", "tar 解压系统目录"],
+	['[IO.File]::WriteAllBytes("\\\\.\\PhysicalDrive0", $data)', "原始设备直写"]
+];
+for (const [cmd, label] of FAST_CRITICAL) {
+	const r = LEN(cmd);
+	check(`fast critical: ${label}`, r.impacts.length > 0 && r.ruleIds.includes("write-outside"), JSON.stringify(r));
+}
+
+console.log("  -- 同目标非系统路径仍放行（可逆写）");
+const FAST_FREE = [
+	["curl -o C:\\Users\\me\\evil.exe http://x", "可逆落地用户目录"],
+	["certutil -urlcache -split -f http://x/a.exe C:\\Users\\me\\a.exe", "certutil 落地用户目录"],
+	["Set-Content -Path C:\\Users\\other\\a.txt -Value x", "可逆写用户目录"]
+];
+for (const [cmd, label] of FAST_FREE) {
+	const r = LEN(cmd);
+	check(`fast free: ${label}`, r.impacts.length === 0 && !r.ambiguous, JSON.stringify(r));
+}
+
+console.log("  -- 卸载类补全 / 系统级命令");
+const FAST_SYS = [
+	["npm uninstall -g x", "sys:uninstall"],
+	["cargo remove x", "sys:uninstall"],
+	["sc config spooler start= disabled", "sys:sc"],
+	["reg delete HKLM\\Software\\X /f", "sys:hklm"]
+];
+for (const [cmd, expectId] of FAST_SYS) {
+	const r = LEN(cmd);
+	check(`fast sys: ${cmd.slice(0, 40)} -> ${expectId}`, r.impacts.length > 0 && r.ruleIds.includes(expectId), JSON.stringify(r));
 }
 
 // ============ 汇总 ============
