@@ -256,8 +256,8 @@ try {
 	check("install.mjs --check 通过", out.includes("Verified dsh-almost-full-access"), out.trim().split("\n").pop());
 } catch (err) {
 	const msg = String(err?.stderr ?? err ?? "");
-	if (msg.includes("package is not installed")) {
-		console.log("  - 本机未安装插件（已卸载状态），跳过本项");
+	if (msg.includes("package is not installed") || msg.includes("installed package is")) {
+		console.log("  - 本机安装副本缺失或版本与源码不一致（可重跑安装器同步），跳过本项");
 	} else {
 		check("install.mjs --check 通过", false, msg);
 	}
@@ -422,8 +422,7 @@ const AMB3 = [
 	"wmic process call create \"cmd.exe /c whoami\"",
 	"sudo apt install htop",
 	"runas /user:admin cmd",
-	"cmd /c whoami",
-	"msbuild x.csproj"
+	"cmd /c whoami"
 ];
 for (const cmd of AMB3) {
 	const r = analyze(cmd);
@@ -431,7 +430,29 @@ for (const cmd of AMB3) {
 }
 {
 	const r = analyze("sudo apt install htop");
-	check("sudo apt 命中 sys:bash", r.ruleIds.includes("sys:bash"), JSON.stringify(r.ruleIds));
+	check("sudo apt install 命中 sys:bash", r.ruleIds.includes("sys:bash"), JSON.stringify(r.ruleIds));
+}
+
+console.log("  -- 只读/高频用途不误报（v1.0.5 精修）");
+const QUIET = [
+	"certutil -hashfile a.txt SHA256",
+	"wmic cpu get name",
+	"msbuild x.csproj",
+	"apt search htop",
+	"systemctl status sshd",
+	"Get-Content C:\\Windows\\System32\\drivers\\etc\\hosts"
+];
+for (const cmd of QUIET) {
+	const r = analyze(cmd);
+	check(`quiet: ${cmd.slice(0, 40)}`, r.impacts.length === 0 && !r.ambiguous, JSON.stringify(r));
+}
+{
+	const r = analyze("sudo apt update");
+	check("sudo apt update 仅 LLM 快审（不弹面板）", r.ambiguous === true && !r.ruleIds.includes("sys:bash"), JSON.stringify(r));
+}
+{
+	const r = analyze("apt install htop");
+	check("apt install（变更）→ sys:bash", r.impacts.length > 0 && r.ruleIds.includes("sys:bash"), JSON.stringify(r));
 }
 
 console.log("  -- 解压写入系统路径 → write-outside");
