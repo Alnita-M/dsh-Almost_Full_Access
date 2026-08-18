@@ -230,17 +230,14 @@ check("无占位符残留", !JSON.stringify(pkg).includes("your-github-username"
 // ============ 6. patch 内容 ============
 console.log("\n[6] cordis.patch.yml");
 const patch = readFileSync(join(root, "cordis.patch.yml"), "utf8");
-check("含 lenient 档位", patch.includes("lenient:"));
-check("含 strict 档位", patch.includes("strict:"));
-check("档位名带 🛡️ Fast Mode", patch.includes("🛡️ Fast Mode"));
-check("档位名带 🛡️ Safe Mode", patch.includes("🛡️ Safe Mode"));
-check("strict 位于 lenient 之后（UI 右侧）", patch.indexOf("lenient:") < patch.indexOf("strict:"), "顺序错误");
+check("含 almost-full-access 档位", patch.includes("almost-full-access:"));
+check("档位名带 🛡️ Almost Full Access", patch.includes("🛡️ Almost Full Access"));
+check("Fast/Safe 是分支而非预设（不含 lenient:/strict: 档位键）", !patch.includes("lenient:") && !patch.includes("strict:"), "不应出现独立档位");
+check("描述提及 Fast/Safe 分支", patch.includes("Fast Mode") && patch.includes("Safe Mode"));
 check("sandbox=danger-full-access", patch.includes("sandbox: danger-full-access"));
 check("含 permission 预设覆盖", patch.includes("- id: permission"));
 check("含插件挂载", patch.includes("name: dsh-almost-full-access"));
 check("含 read-only / workspace-write / danger-full-access 完整预设", ["read-only", "workspace-write", "danger-full-access"].every((k) => patch.includes(k)));
-check("strict 描述声明 pwsh/bash 边界（A3）", patch.includes("every pwsh/bash shell command"), patch.split("\n").find((l) => l.includes("description")));
-check("lenient 描述声明轻量审查", patch.includes("lightweight review"), patch.split("\n").find((l) => l.includes("description")));
 
 // ============ 7. 语法检查 ============
 console.log("\n[7] 语法检查");
@@ -283,7 +280,7 @@ const INSERT_ONLY = `# 其它插件
 	const c = patchCounts(out);
 	check("空 patch → 组合后 permission=1", c.permission === 1, String(c.permission));
 	check("空 patch → 组合后 plugin=1", c.plugin === 1, String(c.plugin));
-	check("空 patch → 含 lenient 档位", out.includes("lenient"));
+	check("空 patch → 含 almost-full-access 档位", out.includes("almost-full-access"));
 }
 
 // 9b 仅有 insert 块、无 permission：追加预设而非丢失（关键回归）
@@ -329,7 +326,7 @@ const INSERT_ONLY = `# 其它插件
 `;
 	const r = replacePermissionBlock(bomPatch);
 	check("BOM patch → replacePermissionBlock 命中替换", r.replaced === true, "replaced=false");
-	check("BOM patch → 输出含 lenient 档位", r.text.includes("lenient"));
+	check("BOM patch → 输出含 almost-full-access 档位", r.text.includes("almost-full-access"));
 	check("BOM patch → 计数正确", patchCounts(r.text).permission === 1, patchCounts(r.text).permission);
 }
 
@@ -338,7 +335,7 @@ const INSERT_ONLY = `# 其它插件
 	const crlf = "- id: permission\r\n  config:\r\n    presets:\r\n      read-only:\r\n        sandbox: read-only\r\n        approval: ask\r\n";
 	const r = replacePermissionBlock(crlf);
 	check("CRLF patch → 替换成功", r.replaced === true);
-	check("CRLF patch → 含 lenient 档位", r.text.includes("lenient"));
+	check("CRLF patch → 含 almost-full-access 档位", r.text.includes("almost-full-access"));
 }
 
 // 9g 重复 permission 块：解析计数应 >1（触发 verify 报错，而不是静默）
