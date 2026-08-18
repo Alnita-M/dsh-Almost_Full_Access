@@ -12,12 +12,20 @@
  *   6. patch 内容（preset 档位 + 插件挂载）
  *   7. 语法检查（lib/*.js、scripts/*.mjs）
  *   8. 安装器幂等（--check）
+ *   9. 跨电脑安装健壮性（patch-lib：空 patch / 无 permission / BOM / CRLF / 嵌套 / 幂等）
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeCommand, hashCommand } from "../lib/analyze.js";
+import {
+	replacePermissionBlock,
+	ensurePermissionBlock,
+	ensureInsertBlock,
+	withoutEmptySequenceRoot,
+	patchCounts
+} from "../scripts/patch-lib.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const WS = "C:\\Users\\18107\\Desktop\\DeepSeek Harness";
@@ -212,6 +220,8 @@ check("dsh.client.platform=web", pkg.dsh?.client?.platform === "web");
 check("files 含 lib", Array.isArray(pkg.files) && pkg.files.includes("lib/"));
 check("files 含 cordis.patch.yml", pkg.files.includes("cordis.patch.yml"));
 check("files 含 install 脚本", pkg.files.includes("scripts/install.mjs"));
+check("files 含 patch-lib 库（安装器 import 依赖）", pkg.files.includes("scripts/patch-lib.mjs"));
+check("engines 声明 Node>=16", pkg.engines?.node === ">=16", JSON.stringify(pkg.engines));
 check("bin 已声明", pkg.bin?.["dsh-afaccess-install"] === "scripts/install.mjs");
 check("非 private", pkg.private !== true);
 check("repository 指向 Alnita-M/dsh-Almost_Full_Access", String(pkg.repository?.url ?? "").includes("Alnita-M/dsh-Almost_Full_Access"), pkg.repository?.url);
@@ -230,7 +240,7 @@ check("描述声明 pwsh/bash 边界（A3）", patch.includes("every pwsh/bash s
 
 // ============ 7. 语法检查 ============
 console.log("\n[7] 语法检查");
-for (const f of ["lib/index.js", "lib/analyze.js", "lib/client.js", "scripts/install.mjs", "scripts/test.mjs"]) {
+for (const f of ["lib/index.js", "lib/analyze.js", "lib/client.js", "scripts/install.mjs", "scripts/patch-lib.mjs", "scripts/test.mjs"]) {
 	try {
 		execFileSync(process.execPath, ["--check", join(root, f)], { stdio: "pipe" });
 		check(`node --check ${f}`, true);
@@ -246,6 +256,100 @@ try {
 	check("install.mjs --check 通过", out.includes("Verified dsh-almost-full-access"), out.trim().split("\n").pop());
 } catch (err) {
 	check("install.mjs --check 通过", false, String(err?.stderr ?? err));
+}
+
+// ============ 9. 跨电脑安装健壮性（patch-lib，v1.0.3）============
+console.log("\n[9] 跨电脑安装健壮性（patch-lib）");
+
+const PERM = "- id: permission";
+const INSERT_ONLY = `# 其它插件
+- insert:
+    - id: usage-stats
+      name: @deepseek-ai/dsh-usage-stats
+`;
+
+// 9a 空 patch：预设 + 插件挂载都补全
+{
+	const out = ensureInsertBlock(ensurePermissionBlock(replacePermissionBlock("").text));
+	const c = patchCounts(out);
+	check("空 patch → 组合后 permission=1", c.permission === 1, String(c.permission));
+	check("空 patch → 组合后 plugin=1", c.plugin === 1, String(c.plugin));
+	check("空 patch → 含 almost-full-access 档位", out.includes("almost-full-access"));
+}
+
+// 9b 仅有 insert 块、无 permission：追加预设而非丢失（关键回归）
+{
+	const out = ensureInsertBlock(ensurePermissionBlock(replacePermissionBlock(INSERT_ONLY).text));
+	const c = patchCounts(out);
+	check("仅 insert 的 patch → 追加 permission=1", c.permission === 1, String(c.permission));
+	check("仅 insert 的 patch → plugin 仍为 1", c.plugin === 1, String(c.plugin));
+	check("仅 insert 的 patch → 原内容保留", out.includes("usage-stats"));
+}
+
+// 9c 已有顶层 permission：幂等（不重复追加）
+{
+	const hasPerm = INSERT_ONLY + "\n" + `- id: permission
+  config:
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+`;
+	const out = ensurePermissionBlock(hasPerm);
+	check("已有 permission → 不重复追加", patchCounts(out).permission === 1, patchCounts(out).permission);
+}
+
+// 9d 嵌套的同名行（insert 块内 id: permission，缩进 >0）不算顶层
+{
+	const nested = "- insert:\n    - id: permission\n    - id: afaccess\n      name: dsh-almost-full-access\n";
+	const c = patchCounts(nested);
+	check("嵌套 permission 不计为顶层", c.permission === 0, String(c.permission));
+	const out = ensurePermissionBlock(nested);
+	check("嵌套场景下仍追加顶层 permission", patchCounts(out).permission === 1, patchCounts(out).permission);
+	check("嵌套场景 plugin 识别正常", patchCounts(out).plugin === 1, String(patchCounts(out).plugin));
+}
+
+// 9e UTF-8 BOM（Windows 记事本）不再破坏匹配
+{
+	const bomPatch = "\uFEFF" + INSERT_ONLY + `- id: permission
+  config:
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+`;
+	const r = replacePermissionBlock(bomPatch);
+	check("BOM patch → replacePermissionBlock 命中替换", r.replaced === true, "replaced=false");
+	check("BOM patch → 输出含预设档位", r.text.includes("almost-full-access"));
+	check("BOM patch → 计数正确", patchCounts(r.text).permission === 1, patchCounts(r.text).permission);
+}
+
+// 9f CRLF 换行
+{
+	const crlf = "- id: permission\r\n  config:\r\n    presets:\r\n      read-only:\r\n        sandbox: read-only\r\n        approval: ask\r\n";
+	const r = replacePermissionBlock(crlf);
+	check("CRLF patch → 替换成功", r.replaced === true);
+	check("CRLF patch → 含档位", r.text.includes("almost-full-access"));
+}
+
+// 9g 重复 permission 块：解析计数应 >1（触发 verify 报错，而不是静默）
+{
+	const dup = INSERT_ONLY + PERM + "\n" + PERM + "\n";
+	check("重复 permission → 计数=2", patchCounts(dup).permission === 2, patchCounts(dup).permission);
+}
+
+// 9h [] 空根序列清理
+{
+	const out = withoutEmptySequenceRoot("[]\n# comment line\n...\n");
+	check("[] 空根序列被移除", !out.includes("[]") && out.includes("# comment line"), out);
+}
+
+// 9i 完整模拟一次跨电脑安装（空 patch + 有内容 patch）
+{
+	const emptyFlow = ensureInsertBlock(ensurePermissionBlock(replacePermissionBlock("").text));
+	check("组合流程输出为合法 YAML 片段（以 - 开头）", /(^|\n)- (id|insert):/.test(emptyFlow), emptyFlow.slice(0, 60));
+	const fullFlow = ensureInsertBlock(ensurePermissionBlock(replacePermissionBlock(INSERT_ONLY).text));
+	check("有内容 patch 组合后含两处插件名", (fullFlow.match(/name: dsh-almost-full-access/g) || []).length >= 1, fullFlow);
 }
 
 // ============ 汇总 ============

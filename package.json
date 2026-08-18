@@ -26,11 +26,15 @@
     "lib/",
     "cordis.patch.yml",
     "scripts/install.mjs",
+    "scripts/patch-lib.mjs",
     "assets/afaccess-logo.svg",
     "README.md",
     "LICENSE",
     "SECURITY.md"
   ],
+  "engines": {
+    "node": ">=16"
+  },
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -52,7 +56,7 @@
     }
   },
   "scripts": {
-    "check": "node --check lib/index.js && node --check lib/analyze.js && node --check lib/client.js && node --check scripts/install.mjs && node --check scripts/test.mjs",
+    "check": "node --check lib/index.js && node --check lib/analyze.js && node --check lib/client.js && node --check scripts/install.mjs && node --check scripts/patch-lib.mjs && node --check scripts/test.mjs",
     "test": "node scripts/test.mjs"
   },
   "license": "MIT"

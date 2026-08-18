@@ -47,7 +47,11 @@ node scripts/install.mjs             # 实际安装
 
 > 安装器会把插件复制到 `~/.dsh/profiles/node_modules/dsh-almost-full-access/`，
 > 并幂等更新 `~/.dsh/profiles/web/cordis.patch.yml`（权限预设表 + 插件挂载）。
+> **全新电脑**（`cordis.patch.yml` 为空或不存在）也会自动写入完整的预设块与挂载块；
+> 若未检测到 DSH Web 配置目录会打印警告（请先安装 DeepSeek Harness 再装本插件）。
 > 其他安装器选项：`--check` / `--dry-run` / `--no-enable` / `--help`。
+>
+> 要求 **Node.js ≥ 16**（安装器与插件使用 ESM / top-level await）。
 
 ### 安装后
 
