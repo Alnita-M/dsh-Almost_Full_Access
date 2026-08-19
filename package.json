@@ -28,6 +28,8 @@
     "scripts/install.mjs",
     "scripts/patch-lib.mjs",
     "assets/afaccess-logo.svg",
+    "docs/",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE",
     "SECURITY.md"
