@@ -565,6 +565,16 @@ for (const [cmd, label] of CRITICAL) {
 	check(`critical: ${label}`, r.impacts.length > 0 && r.ruleIds.includes("write-outside"), JSON.stringify(r));
 }
 
+// ============ 13. dsh 0.1.1-rc.2 契约自检（v1.1.1 修复）============
+console.log("\n[13] dsh 0.1.1-rc.2 契约自检");
+const indexSrc = readFileSync(join(root, "lib/index.js"), "utf8");
+check("inject 含 sessions 服务", indexSrc.includes("'sessions'"));
+check("currentPreset 使用 current(session) 新签名", indexSrc.includes("permissionPresets.current(session)"));
+check("不再传 agent.session.events（旧签名）", !indexSrc.includes("current(agent.session.events)"));
+check("sessionOf 经 sessions.get(agent.id) 回退", indexSrc.includes("sessions.get(agent.id)"));
+check("保留 agent.session 兼容分支", indexSrc.includes("agent.session !== undefined"));
+check("CHANGELOG 已记录 v1.1.1", readFileSync(join(root, "CHANGELOG.md"), "utf8").includes("v1.1.1"));
+
 // ============ 汇总 ============
 console.log(`\n========================================`);
 console.log(`结果：${passed} 通过 / ${failed} 失败`);

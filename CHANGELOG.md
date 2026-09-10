@@ -1,5 +1,31 @@
 # 更新说明 Changelog
 
+## v1.1.1（2026-09-10）— 适配 dsh 0.1.1-rc.2（破坏性 API 兼容修复）
+
+> 修复 v1.1.0 在 dsh 升级到 0.1.1-rc.2 后的**门控静默失效**问题。
+
+### 🐛 问题
+
+dsh 0.1.1-rc.2 引入两处破坏性 API 变更，导致插件的命令门控完全失效（命令全部直接放行、无审查、无审批面板，且无任何报错）：
+
+1. `permissionPresets.current()` 参数从 `events: SessionEvent[]` 改为 `session: Session`；
+2. `Agent` 接口不再暴露 `session` 属性（仅剩 `id`）。
+
+### 🔧 修复
+
+- 新增 `sessionOf(agent)`：优先取 `agent.session`（兼容旧运行时），否则经 `sessions.get(agent.id)` 服务回退获取 Session；
+- `currentPreset()` 改用新签名 `permissionPresets.current(session)`；
+- `sessionWorkspace()` 同步适配；
+- `inject` 声明补充 `sessions` 服务；
+- 测试套件新增 **[13] 契约自检**（防止 API 回归）。
+
+### 验证
+
+- 204 项测试全部通过；
+- 运行时验证需重启 dsh web 后生效（静态插件启动时加载）。
+
+---
+
 ## v1.1.0（2026-08-18）— 审查模型重构：单一模式
 
 > 本版本从 **v1.0.5** 起经历了一次大的规则与交互演进（开发期曾实现「Fast / Safe 双模式分支选择器」，最终按设计取舍**合并为单一 Almost Full Access 模式**）。以下为相对 v1.0.5 的全部变化。
