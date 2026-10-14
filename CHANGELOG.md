@@ -1,5 +1,47 @@
 # 更新说明 Changelog
 
+## v1.2.0（2026-10-14）— 支持桌面版客户端（dsh 0.2.0-rc.2）+ 修复工作区解析
+
+> 旧版安装器把目标 profile **硬编码为 `web`**，因此在 **DeepSeek Harness 桌面版（Electron）**
+> 上"装好了却不生效"——插件文件在 `profiles/node_modules/`，但 `profiles/desktop/cordis.patch.yml`
+> 里既没有权限预设块也没有插件挂载块。
+
+### 🖥️ 新增：多客户端 profile 支持
+
+- 安装器默认写入**已存在的客户端 profile**：`desktop`（桌面版）优先，其次 `web`；两者都在则都写；
+- 新增 `--profile <name>`（可重复）与 `--all-profiles` 精确指定目标；
+- 未检测到客户端 profile 时给出明确告警并提示如何指定，不再静默"安装成功"；
+- `--check` 现在逐个校验目标 profile 的 patch（插件挂载 =1、顶层 permission 块 =1）；
+- 插件包本体仍只装一份在 `profiles/node_modules/`，由各 profile 共享。
+
+### 🐛 修复：工作区目录解析恒为兜底路径
+
+- `sandboxPolicy.resolve({ session })` 返回的字段是 **`workspaceRoot`**，不是 `root`；
+  旧代码的 `policy.root` 恒为 `undefined`，只能退到 `session.header.cwd`
+  （两者同源，行为一致，但分支实为死代码）。现已改为读取 `workspaceRoot`。
+
+### ✅ 兼容性核对（dsh 0.2.0-rc.2，桌面版内嵌运行时）
+
+Host 半区全部 API 逐条核对通过，无破坏性变更：
+`defineTool`（`parameters` / `output.schema` / `output.render` / 属性级 `required: true`）、
+`tools/pre-execute` waterfall（`next()` / `{kind:'deny',reason}`）、
+`inject` 的 7 个服务（`tools` `subagents` `userQuestions` `permissionPresets` `sandboxPolicy` `webServer` `sessions`）、
+`permissionPresets.optionOf/current`、`sandboxPolicy.workspaceRoot`、`sessions.get`、
+`subagents.list/start`（`label` `prompt` `parent` `signal` `outputSchema` `toolFilter`）、
+`SubagentResult.structured/stopReason`、`userQuestions.ask` + `selected: string[]`、
+`webServer.register({ kind:'exact' })`。
+
+Client 半区：`conversation.input.overlay` 槽位仍存在；`window.__ModuleLoader__.load({id,factory})`
+与 `exports.inject/apply` 仍是 0.2.0-rc.2 的静态客户端插件约定；
+`dsh.client.inject` 中已不存在的 `@deepseek-ai/dsh-client-runtime` 被组合器**容错跳过**，不影响加载。
+
+### ⚙️ 生效方式
+
+- `profiles/*/cordis.patch.yml` 由 `@deepseek-ai/dsh-hmr` 监听并**热重载**，通常无需重启；
+- 客户端 bundle 需硬刷新浏览器（Ctrl+Shift+R）后出现。
+
+---
+
 ## v1.1.1（2026-09-10）— 适配 dsh 0.1.1-rc.2（破坏性 API 兼容修复）
 
 > 修复 v1.1.0 在 dsh 升级到 0.1.1-rc.2 后的**门控静默失效**问题。

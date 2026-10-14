@@ -7,52 +7,107 @@
  *   或本地：node scripts/install.mjs [options]
  *
  * 选项：
- *   --check      校验已安装的包与 patch（不修改）
- *   --dry-run    打印将执行的安装路径与变更
- *   --no-enable  只复制文件，不修改 cordis.patch.yml
- *   --help       帮助
+ *   --profile <name>  只把补丁写入指定 profile（可重复，如 --profile desktop）
+ *   --all-profiles    写入 $DSH_HOME/profiles 下所有已存在的 profile
+ *   --check           校验已安装的包与 patch（不修改）
+ *   --dry-run         打印将执行的安装路径与变更
+ *   --no-enable       只复制文件，不修改 cordis.patch.yml
+ *   --help            帮助
  *
- * 默认 DSH_HOME=~/.dsh。安装后重启 dsh web 并硬刷新浏览器。
+ * 默认 DSH_HOME=~/.dsh。安装后重启 dsh（或等 profile 补丁热重载），再硬刷新浏览器。
  *
  * 跨电脑安装健壮性（v1.0.3）：
  * - patch 编辑逻辑抽到 scripts/patch-lib.mjs（纯函数）：顶层 permission 块缺失时
  *   自动追加（全新电脑空 patch 不再丢失预设）、剥离 UTF-8 BOM、解析式计数；
- * - 未检测到 DSH Web 配置目录时给出明确警告（不静默"成功"）；
+ * - 未检测到 DSH 配置目录时给出明确警告（不静默"成功"）；
  * - patch-lib.mjs 随包复制到目标安装目录，npm 全局安装的安装器可正常 import。
+ *
+ * v1.2.0 — 多客户端支持（desktop / web）：
+ * - 旧版把目标 profile 硬编码为 `web`，导致**桌面版（Electron）客户端装了也不生效**；
+ * - 现在默认写入已存在的客户端 profile（desktop 优先，其次 web），
+ *   也可用 --profile / --all-profiles 精确指定；
+ * - 插件包本体仍装在 profiles/node_modules（两个 profile 共用，无需重复安装）。
  */
 import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	PKG_NAME,
+	CLIENT_PROFILES,
 	replacePermissionBlock,
 	ensurePermissionBlock,
 	ensureInsertBlock,
-	patchCounts
+	patchCounts,
+	selectTargetProfiles
 } from "./patch-lib.mjs";
 
-const knownFlags = new Set(["--check", "--dry-run", "--no-enable", "--help"]);
-const args = new Set(process.argv.slice(2));
-for (const arg of args) {
-	if (!knownFlags.has(arg)) {
-		console.error(`Unknown option: ${arg}`);
-		process.exit(2);
-	}
+function fail(message) {
+	console.error(message);
+	process.exit(2);
 }
 
-if (args.has("--help")) {
+function parseArgs(argv) {
+	const opts = { check: false, dryRun: false, enable: true, help: false, allProfiles: false, profiles: [] };
+	for (let i = 0; i < argv.length; i++) {
+		const arg = argv[i];
+		if (arg === "--check") opts.check = true;
+		else if (arg === "--dry-run") opts.dryRun = true;
+		else if (arg === "--no-enable") opts.enable = false;
+		else if (arg === "--all-profiles") opts.allProfiles = true;
+		else if (arg === "--help" || arg === "-h") opts.help = true;
+		else if (arg === "--profile") {
+			const value = argv[++i];
+			if (value === undefined || value === "" || value.startsWith("--")) fail("--profile requires a profile name");
+			opts.profiles.push(value);
+		} else if (arg.startsWith("--profile=")) {
+			const value = arg.slice("--profile=".length);
+			if (value === "") fail("--profile requires a profile name");
+			opts.profiles.push(value);
+		} else fail(`Unknown option: ${arg}`);
+	}
+	return opts;
+}
+
+/** $DSH_HOME/profiles 下已存在的 profile 目录名（排除 node_modules）。 */
+function existingProfiles(dshHome) {
+	const root = join(dshHome, "profiles");
+	if (!existsSync(root)) return [];
+	return readdirSync(root, { withFileTypes: true })
+		.filter((entry) => entry.isDirectory() && entry.name !== "node_modules")
+		.map((entry) => entry.name)
+		.sort();
+}
+
+/** 本次要写入补丁的 profile 列表。 */
+function selectProfiles(dshHome, opts) {
+	return selectTargetProfiles({
+		present: existingProfiles(dshHome),
+		requested: opts.profiles,
+		allProfiles: opts.allProfiles
+	});
+}
+
+const opts = parseArgs(process.argv.slice(2));
+
+if (opts.help) {
 	console.log(`dsh-almost-full-access installer
 
 Usage:
   npx --yes github:Alnita-M/dsh-Almost_Full_Access [options]
 
 Options:
-  --check      Verify the installed package and Cordis patch without changing them
-  --dry-run    Print the resolved paths and planned changes
-  --no-enable  Install files without editing cordis.patch.yml
-  --help       Show this help
+  --profile <name>  Patch only this profile (repeatable; e.g. --profile desktop)
+  --all-profiles    Patch every existing profile under $DSH_HOME/profiles
+  --check           Verify the installed package and Cordis patches without changing them
+  --dry-run         Print the resolved paths and planned changes
+  --no-enable       Install files without editing cordis.patch.yml
+  --help            Show this help
+
+Without --profile/--all-profiles the installer patches every client profile that
+exists: "desktop" (the Electron app) and "web" (dsh web). The plugin package itself
+is installed once into <DSH_HOME>/profiles/node_modules and shared by both.
 
 Set DSH_HOME to override the default ~/.dsh location.`);
 	process.exit(0);
@@ -62,7 +117,8 @@ const sourceRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const sourcePackage = JSON.parse(await readFile(join(sourceRoot, "package.json"), "utf8"));
 const dshHome = process.env.DSH_HOME ?? join(homedir(), ".dsh");
 const target = join(dshHome, "profiles", "node_modules", PKG_NAME);
-const patchPath = join(dshHome, "profiles", "web", "cordis.patch.yml");
+const { targets: profiles } = selectProfiles(dshHome, opts);
+const patchPathOf = (name) => join(dshHome, "profiles", name, "cordis.patch.yml");
 
 async function readOptional(path) {
 	try {
@@ -80,36 +136,48 @@ async function verify(expectEnabled) {
 	if (installed.name !== sourcePackage.name || installed.version !== sourcePackage.version) {
 		throw new Error(`installed package is ${installed.name ?? "unknown"}@${installed.version ?? "unknown"}; expected ${sourcePackage.name}@${sourcePackage.version}`);
 	}
-	if (expectEnabled) {
+	console.log(`Verified ${sourcePackage.name}@${sourcePackage.version}`);
+	console.log(`  package: ${target}`);
+	if (!expectEnabled) return;
+	if (profiles.length === 0) {
+		console.log("  patch:   (none — no client profile found; use --profile to force one)");
+		return;
+	}
+	for (const name of profiles) {
+		const patchPath = patchPathOf(name);
 		const patch = await readOptional(patchPath);
 		const counts = patch === null ? { plugin: 0, permission: 0 } : patchCounts(patch);
 		if (counts.plugin !== 1) throw new Error(`expected exactly one ${PKG_NAME} entry in ${patchPath}; found ${counts.plugin}`);
 		if (counts.permission !== 1) throw new Error(`expected exactly one permission preset block in ${patchPath}; found ${counts.permission}`);
+		console.log(`  patch:   ${patchPath}`);
 	}
-	console.log(`Verified ${sourcePackage.name}@${sourcePackage.version}`);
-	console.log(`  package: ${target}`);
-	if (expectEnabled) console.log(`  patch:   ${patchPath}`);
 }
 
-const enable = !args.has("--no-enable");
-if (args.has("--dry-run")) {
+const enable = opts.enable;
+if (opts.dryRun) {
 	console.log(`Would install ${sourcePackage.name}@${sourcePackage.version}`);
 	console.log(`  package: ${target}`);
-	console.log(`  patch:   ${enable ? patchPath : "unchanged (--no-enable)"}`);
+	if (!enable) console.log("  patch:   unchanged (--no-enable)");
+	else if (profiles.length === 0) console.log("  patch:   (none — no client profile found; use --profile to force one)");
+	else for (const name of profiles) console.log(`  patch:   ${patchPathOf(name)}`);
 	console.log(`  preset:  almost-full-access (🛡️ Almost Full Access：轻量规则 + 动态命令子代理审查)`);
 	process.exit(0);
 }
 
-if (args.has("--check")) {
+if (opts.check) {
 	await verify(enable);
 	process.exit(0);
 }
 
-// v1.0.3：未安装 DSH Web 时给出明确警告，避免"安装成功但无效"
-if (!existsSync(join(dshHome, "profiles", "web"))) {
-	console.warn("⚠️  未检测到 DSH Web 配置目录：" + join(dshHome, "profiles", "web"));
-	console.warn("   请确认这台电脑已安装 DeepSeek Harness（Web 版）且 DSH_HOME 指向正确；");
+// v1.0.3：未安装 DSH 时给出明确警告，避免"安装成功但无效"
+if (!existsSync(join(dshHome, "profiles"))) {
+	console.warn("⚠️  未检测到 DSH 配置目录：" + join(dshHome, "profiles"));
+	console.warn("   请确认这台电脑已安装 DeepSeek Harness 且 DSH_HOME 指向正确；");
 	console.warn("   否则本插件虽然会复制到 " + dshHome + "，但 dsh 不会加载它。");
+} else if (enable && profiles.length === 0) {
+	console.warn("⚠️  未检测到客户端 profile（desktop / web），因此没有写入任何 cordis.patch.yml。");
+	console.warn("   已存在的 profile：" + (existingProfiles(dshHome).join(", ") || "（无）"));
+	console.warn("   用 --profile <name> 或 --all-profiles 指定要启用插件的 profile。");
 }
 
 await mkdir(target, { recursive: true });
@@ -122,14 +190,24 @@ await cp(fileURLToPath(import.meta.url), join(target, "scripts", "install.mjs"),
 await cp(join(sourceRoot, "scripts", "patch-lib.mjs"), join(target, "scripts", "patch-lib.mjs"), { force: true });
 
 if (enable) {
-	await mkdir(dirname(patchPath), { recursive: true });
-	let current = await readOptional(patchPath) ?? "";
-	let next = replacePermissionBlock(current).text;
-	next = ensurePermissionBlock(next); // 无顶层 permission 块的干净 patch：追加预设（否则模式缺失）
-	next = ensureInsertBlock(next);
-	if (next !== current) await writeFile(patchPath, next, "utf8");
+	for (const name of profiles) {
+		const patchPath = patchPathOf(name);
+		const existed = existsSync(patchPath);
+		if (!existed && !existsSync(join(dshHome, "profiles", name))) {
+			console.warn(`⚠️  profile "${name}" 不存在，跳过：` + patchPath);
+			continue;
+		}
+		await mkdir(dirname(patchPath), { recursive: true });
+		const current = await readOptional(patchPath) ?? "";
+		let next = replacePermissionBlock(current).text;
+		next = ensurePermissionBlock(next); // 无顶层 permission 块的干净 patch：追加预设（否则模式缺失）
+		next = ensureInsertBlock(next);
+		if (next !== current) await writeFile(patchPath, next, "utf8");
+		console.log(`Patched ${name}: ${patchPath}`);
+	}
 }
 
 await verify(enable);
-console.log("Installation complete. Restart dsh web, then hard-refresh the browser.");
+console.log("Installation complete.");
 console.log("启用方式：在会话权限选择器中切换到「🛡️ Almost Full Access」。");
+console.log("补丁生效：桌面版/Web 版会热重载 cordis.patch.yml；若未生效请重启 dsh 并硬刷新浏览器。");

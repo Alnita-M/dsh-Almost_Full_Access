@@ -13,6 +13,12 @@
  */
 export const PKG_NAME = "dsh-almost-full-access";
 
+/** 默认按此顺序挑选客户端 profile（两者都存在时都写入）。 */
+export const CLIENT_PROFILES = ["desktop", "web"];
+
+/** 本插件在 patch 中自有注释行的标记（用于收敛历史累积的重复注释）。 */
+export const OWN_COMMENT_MARK = "dsh-Almost Full Access:";
+
 export const PERMISSION_BLOCK = `# dsh-Almost Full Access: 权限模式预设（🛡️ Almost Full Access）
 - id: permission
   config:
@@ -74,6 +80,10 @@ export function withoutEmptySequenceRoot(text) {
  * 替换/追加 permission 预设块（config 为整体替换，必须完整覆盖 dsh-base 的预设表）。
  * 若已有顶层 `- id: permission`（缩进 0）条目，则从该行替换到下一个顶层条目之前。
  * 找不到顶层块时返回 { replaced:false }（由调用方 ensurePermissionBlock 兜底追加）。
+ *
+ * 幂等性（v1.2.0 修复）：替换范围要**连同该条目自己的注释行**一起吃掉，
+ * 否则每重跑一次安装器就会多累积一行注释；同时替换区间的右边界要回退到
+ * 下一个顶层条目的注释之前，否则那条注释会被误删。文件头部注释块永不吞噬。
  */
 export function replacePermissionBlock(text) {
 	const txt = stripBom(text);
@@ -81,7 +91,31 @@ export function replacePermissionBlock(text) {
 	const meaningful = meaningfulPatchLines(txt);
 	const start = meaningful.find(({ indent, content }) => indent === 0 && (content === "- id: permission" || /^-?\s*id:\s*permission\s*$/.test(content)));
 	if (start === void 0) return { text: withoutEmptySequenceRoot(txt), replaced: false };
-	// 下一个顶层条目（缩进 0 且以 "- " 开头，且不是该块自身的延续）
+	// 左边界：连同该条目自己的注释行一起替换（但不吃文件头部注释块，也不吃第 0 行）。
+	// 只吞噬**本插件自有标记**的注释行（可跨其间的空行），这样历史版本累积的
+	// 重复注释会在下次安装时收敛为一行，且绝不会误伤文件头或其它插件的注释。
+	let headEnd = start.index;
+	let cursor = headEnd - 1;
+	let from = headEnd;
+	let sawOwnComment = false;
+	while (cursor >= 0) {
+		const line = lines[cursor];
+		if (/^[ \t]*#/.test(line)) {
+			if (!line.includes(OWN_COMMENT_MARK)) break;
+			sawOwnComment = true;
+			from = cursor;
+			cursor -= 1;
+			continue;
+		}
+		if (sawOwnComment && /^[ \t]*$/.test(line)) {
+			from = cursor;
+			cursor -= 1;
+			continue;
+		}
+		break;
+	}
+	if (sawOwnComment && from > 0) headEnd = from;
+	// 右边界：下一个顶层条目（缩进 0 且以 "- " 开头，且不是该块自身的延续）
 	let end = lines.length;
 	for (let i = start.index + 1; i < lines.length; i++) {
 		const line = lines[i];
@@ -92,7 +126,9 @@ export function replacePermissionBlock(text) {
 			break;
 		}
 	}
-	const head = lines.slice(0, start.index).join("\n").trimEnd();
+	// 右边界回退：保留下一个顶层条目自己的注释行
+	while (end - 1 > start.index && /^[ \t]*#/.test(lines[end - 1])) end -= 1;
+	const head = lines.slice(0, headEnd).join("\n").trimEnd();
 	const tail = lines.slice(end).join("\n").trimStart();
 	let out = head;
 	if (head !== "") out += "\n\n";
@@ -125,4 +161,22 @@ export function patchCounts(text) {
 		plugin: meaningful.filter(({ content }) => content === "name: dsh-almost-full-access").length,
 		permission: meaningful.filter(({ indent, content }) => indent === 0 && (content === "- id: permission" || /^-?\s*id:\s*permission\s*$/.test(content))).length
 	};
+}
+
+/**
+ * 选出本次要写入补丁的 profile（纯函数，便于单测）。
+ * - 显式 requested（--profile）优先，去重后原样使用；
+ * - allProfiles（--all-profiles）→ 所有已存在的 profile；
+ * - 否则默认取已存在的客户端 profile（desktop 优先，其次 web）。
+ * 旧版安装器把目标硬编码为 web，桌面版（Electron）因此装了不生效。
+ * @param {object} input
+ * @param {string[]} [input.present]   $DSH_HOME/profiles 下已存在的 profile 名
+ * @param {string[]} [input.requested] 显式指定的 profile 名
+ * @param {boolean} [input.allProfiles]
+ * @returns {{targets: string[], explicit: boolean}}
+ */
+export function selectTargetProfiles({ present = [], requested = [], allProfiles = false } = {}) {
+	if (requested.length > 0) return { targets: [...new Set(requested)], explicit: true };
+	if (allProfiles) return { targets: [...present], explicit: false };
+	return { targets: CLIENT_PROFILES.filter((name) => present.includes(name)), explicit: false };
 }

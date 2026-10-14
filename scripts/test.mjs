@@ -24,7 +24,9 @@ import {
 	ensurePermissionBlock,
 	ensureInsertBlock,
 	withoutEmptySequenceRoot,
-	patchCounts
+	patchCounts,
+	CLIENT_PROFILES,
+	selectTargetProfiles
 } from "../scripts/patch-lib.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -574,6 +576,121 @@ check("不再传 agent.session.events（旧签名）", !indexSrc.includes("curre
 check("sessionOf 经 sessions.get(agent.id) 回退", indexSrc.includes("sessions.get(agent.id)"));
 check("保留 agent.session 兼容分支", indexSrc.includes("agent.session !== undefined"));
 check("CHANGELOG 已记录 v1.1.1", readFileSync(join(root, "CHANGELOG.md"), "utf8").includes("v1.1.1"));
+
+// ============ 14. 多客户端 profile 支持（v1.2.0：桌面版 Electron）============
+console.log("\n[14] 多客户端 profile 支持（desktop / web）");
+
+console.log("  -- selectTargetProfiles（安装目标选择）");
+{
+	const r = selectTargetProfiles({ present: ["desktop", "web", "headless"] });
+	check("desktop+web+headless → 默认取 desktop,web", r.targets.join(",") === "desktop,web", r.targets.join(","));
+}
+{
+	const r = selectTargetProfiles({ present: ["desktop"] });
+	check("仅 desktop → 取 desktop", r.targets.join(",") === "desktop", r.targets.join(","));
+}
+{
+	const r = selectTargetProfiles({ present: ["web"] });
+	check("仅 web → 取 web（向后兼容）", r.targets.join(",") === "web", r.targets.join(","));
+}
+{
+	const r = selectTargetProfiles({ present: ["headless", "acp"] });
+	check("无客户端 profile → 空（由安装器告警）", r.targets.length === 0, r.targets.join(","));
+}
+{
+	const r = selectTargetProfiles({ present: [], requested: ["foo", "foo", "bar"] });
+	check("--profile 去重且优先", r.targets.join(",") === "foo,bar" && r.explicit === true, r.targets.join(","));
+}
+{
+	const r = selectTargetProfiles({ present: ["desktop", "web"], requested: ["headless"] });
+	check("--profile 覆盖默认（显式优先）", r.targets.join(",") === "headless", r.targets.join(","));
+}
+{
+	const r = selectTargetProfiles({ present: ["a", "b"], allProfiles: true });
+	check("--all-profiles → 全部已存在", r.targets.join(",") === "a,b", r.targets.join(","));
+}
+{
+	const r = selectTargetProfiles({ present: ["web"] });
+	check("CLIENT_PROFILES 顺序为 desktop 优先", CLIENT_PROFILES[0] === "desktop", CLIENT_PROFILES.join(","));
+}
+
+console.log("  -- install.mjs 不再把目标硬编码为 web");
+const installSrc = readFileSync(join(root, "scripts/install.mjs"), "utf8");
+check("安装器按 profile 逐个写入 patch", installSrc.includes("patchPathOf"));
+check("安装器支持 --profile", installSrc.includes('"--profile"'));
+check("安装器支持 --all-profiles", installSrc.includes("--all-profiles"));
+check("安装器不再硬编码 profiles/web 路径", !installSrc.includes('"profiles", "web", "cordis.patch.yml"'));
+check("插件包仍装在 profiles/node_modules（共用）", installSrc.includes('join(dshHome, "profiles", "node_modules", PKG_NAME)'));
+
+console.log("  -- v1.2.0：工作区解析读取 workspaceRoot");
+check("sandboxPolicy 读取 workspaceRoot（非 root）", indexSrc.includes("policy?.workspaceRoot") && !indexSrc.includes("policy.root"));
+check("CHANGELOG 已记录 v1.2.0", readFileSync(join(root, "CHANGELOG.md"), "utf8").includes("v1.2.0"));
+
+console.log("  -- v1.2.0：清理已不存在的客户端依赖声明");
+const pkgNow = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+check("dsh.client.inject 不再含 dsh-client-runtime", !(pkgNow.dsh?.client?.inject ?? []).includes("@deepseek-ai/dsh-client-runtime"), JSON.stringify(pkgNow.dsh?.client?.inject));
+check("dsh.client.inject 仍含 locale 与 primitives", (pkgNow.dsh?.client?.inject ?? []).includes("@deepseek-ai/dsh-client-locale") && (pkgNow.dsh?.client?.inject ?? []).includes("@deepseek-ai/dsh-client-ui-primitives"));
+
+// ============ 15. patch 幂等性 / 注释收敛（v1.2.0 修复）============
+console.log("\n[15] patch 幂等性与注释收敛（v1.2.0）");
+
+const applyPatch = (t) => ensureInsertBlock(ensurePermissionBlock(replacePermissionBlock(t).text));
+
+{
+	// 15a 重复应用必须收敛为不动点
+	const base = "- id: ui-chat\n  name: x\n\n" + INSERT_ONLY;
+	const once = applyPatch(base);
+	const twice = applyPatch(once);
+	const thrice = applyPatch(twice);
+	check("重复应用收敛（once===twice===thrice）", once === twice && twice === thrice);
+	check("收敛后 permission=1", patchCounts(once).permission === 1, String(patchCounts(once).permission));
+	check("收敛后 plugin=1", patchCounts(once).plugin === 1, String(patchCounts(once).plugin));
+}
+
+{
+	// 15b 历史累积的重复注释收敛为一行（旧安装器每跑一次多一行）
+	const accumulated = [
+		"# Your patch layer for this dsh profile, applied after every bundle layer:",
+		"# overrides, disables, and insert lists; !!js expressions allowed).",
+		"",
+		"# dsh-usage-stats: token usage heatmap",
+		"# NOTE: registered as a profile bundle",
+		"",
+		"# dsh-Almost Full Access: 权限模式预设（A）",
+		"",
+		"# dsh-Almost Full Access: 权限模式预设（B）",
+		"",
+		"# dsh-Almost Full Access: 权限模式预设（C）",
+		"- id: permission",
+		"  config:",
+		"    presets:",
+		"      read-only:",
+		"        sandbox: read-only",
+		"        approval: ask",
+		"",
+		"# dsh-Almost Full Access: 插件本体挂载",
+		"- insert:",
+		"    - id: afaccess",
+		"      name: dsh-almost-full-access",
+		""
+	].join("\n");
+	const out = applyPatch(accumulated);
+	const ownComments = (out.match(/# dsh-Almost Full Access: 权限模式预设/g) || []).length;
+	check("累积注释收敛为 1 行", ownComments === 1, String(ownComments));
+	check("文件头部注释保留", out.includes("Your patch layer for this dsh profile"));
+	check("其它插件注释保留", out.includes("# dsh-usage-stats: token usage heatmap") && out.includes("# NOTE: registered as a profile bundle"));
+	check("insert 块注释未被吞掉", out.includes("# dsh-Almost Full Access: 插件本体挂载"));
+	check("收敛结果幂等", applyPatch(out) === out);
+	check("收敛后计数仍为 1/1", patchCounts(out).permission === 1 && patchCounts(out).plugin === 1);
+}
+
+{
+	// 15c permission 是文件第一个条目时，头部注释不得被吞
+	const headFirst = "# header line one\n# header line two\n- id: permission\n  config:\n    presets:\n      read-only:\n        sandbox: read-only\n        approval: ask\n";
+	const out = applyPatch(headFirst);
+	check("permission 在文件首块时头部注释保留", out.includes("# header line one") && out.includes("# header line two"), out.slice(0, 80));
+	check("首块场景仍幂等", applyPatch(out) === out);
+}
 
 // ============ 汇总 ============
 console.log(`\n========================================`);

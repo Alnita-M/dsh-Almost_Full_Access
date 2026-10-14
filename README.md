@@ -58,22 +58,24 @@ node scripts/install.mjs             # 实际安装
 ```
 
 > 安装器会把插件复制到 `~/.dsh/profiles/node_modules/dsh-almost-full-access/`，
-> 并幂等更新 `~/.dsh/profiles/web/cordis.patch.yml`（权限预设表 + 插件挂载）。
+> 并幂等更新**客户端 profile** 的 `cordis.patch.yml`（权限预设表 + 插件挂载）：
+> 默认写入已存在的 `desktop`（桌面版 Electron）与 `web`，可用
+> `--profile <name>` / `--all-profiles` 精确指定。
 > **全新电脑**（`cordis.patch.yml` 为空或不存在）也会自动写入完整的预设块与挂载块；
-> 若未检测到 DSH Web 配置目录会打印警告（请先安装 DeepSeek Harness 再装本插件）。
+> 若未检测到 DSH 配置目录会打印警告（请先安装 DeepSeek Harness 再装本插件）。
 > 其他安装器选项：`--check` / `--dry-run` / `--no-enable` / `--help`。
 >
 > 要求 **Node.js ≥ 16**（安装器与插件使用 ESM / top-level await）。
 
 ### 安装后
 
-1. **重启 dsh web**（静态插件随 DSH 启动自动加载，无需在会话中激活）；
-2. 硬刷新浏览器（Ctrl+Shift+R）；
-3. 在会话权限选择器中切换到 **🛡️ Almost Full Access**，然后在输入框工具行右侧的 **Fast / Safe** 选择器切换审查分支；
-4. 输入命令即可体验：安全命令毫秒放行，危险命令弹出审批面板。
+1. **硬刷新浏览器**（Ctrl+Shift+R）；`profiles/*/cordis.patch.yml` 由 `dsh-hmr` 监听并**热重载**，
+   通常**无需重启 dsh**（若未生效再重启）；
+2. 在会话权限选择器中切换到 **🛡️ Almost Full Access**；
+3. 输入命令即可体验：安全命令毫秒放行，危险命令弹出审批面板。
 
 卸载：删除 `~/.dsh/profiles/node_modules/dsh-almost-full-access/` 并从
-`~/.dsh/profiles/web/cordis.patch.yml` 移除对应两块（或重装后 `--no-enable` 对照还原）。
+`~/.dsh/profiles/<desktop|web>/cordis.patch.yml` 移除对应两块（或重装后 `--no-enable` 对照还原）。
 
 ---
 
@@ -81,9 +83,10 @@ node scripts/install.mjs             # 实际安装
 
 | 项 | 要求 |
 |---|---|
-| DSH | Web 版（`profiles/web`），静态插件机制 |
+| DSH | **桌面版（Electron，`profiles/desktop`）** 或 **Web 版（`profiles/web`）**，静态插件机制 |
 | 平台 | Windows（命令审查目标为 PowerShell，`pwsh` 工具） |
 | 权限模式 | 仅 `almost-full-access` 模式启用门控，其余模式零开销 |
+| 已验证版本 | dsh **0.2.0-rc.2**（桌面版内嵌运行时）与 dsh 0.1.7-rc.1 |
 
 ---
 

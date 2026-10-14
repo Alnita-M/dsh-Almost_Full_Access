@@ -1,7 +1,7 @@
 # 🛡️ dsh-Almost Full Access — 插件简要说明
 
-> 介于 **workspace-write** 与 **Full access** 之间的权限模式（v1.1.0）
-> 专为 [DeepSeek Harness](https://github.com/deepseek-ai) (dsh) Web 版设计。
+> 介于 **workspace-write** 与 **Full access** 之间的权限模式（v1.2.0）
+> 支持 [DeepSeek Harness](https://github.com/deepseek-ai) (dsh) **桌面版（Electron）** 与 **Web 版**。
 
 ## 一、它是什么
 
@@ -22,9 +22,21 @@ dsh-afaccess-install
 npx --yes --allow-git=all github:Alnita-M/dsh-Almost_Full_Access
 ```
 
-安装后：**重启 dsh web → 硬刷新浏览器** → 在会话权限选择器切换到 **🛡️ Almost Full Access**。
+安装后：**硬刷新浏览器** → 在会话权限选择器切换到 **🛡️ Almost Full Access**。
 
-要求：Node ≥ 16、dsh Web 版（`profiles/web`）。
+补丁写入哪些 profile：默认写入**已存在的客户端 profile**——`desktop`（桌面版）优先，其次 `web`；
+两者都存在时都写。也可显式指定：
+
+```bash
+node scripts/install.mjs --profile desktop    # 只写桌面版
+node scripts/install.mjs --all-profiles       # 写入所有已存在的 profile
+node scripts/install.mjs --dry-run            # 只预览，不修改
+```
+
+`profiles/*/cordis.patch.yml` 由 `@deepseek-ai/dsh-hmr` 监听并**热重载**，通常**无需重启 dsh**；
+若未生效再重启。插件包本体只装一份在 `profiles/node_modules/`，各 profile 共用。
+
+要求：Node ≥ 16、dsh 桌面版或 Web 版。
 
 ## 三、使用
 
@@ -64,7 +76,7 @@ npx --yes --allow-git=all github:Alnita-M/dsh-Almost_Full_Access
 
 ```powershell
 Remove-Item "$env:USERPROFILE\.dsh\profiles\node_modules\dsh-almost-full-access" -Recurse -Force
-# 并从 ~/.dsh/profiles/web/cordis.patch.yml 移除「Almost Full Access」对应的两块
+# 并从 ~/.dsh/profiles/<desktop|web>/cordis.patch.yml 移除「Almost Full Access」对应的两块
 ```
 
 ## 六、文档
