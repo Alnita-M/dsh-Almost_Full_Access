@@ -567,8 +567,8 @@ for (const [cmd, label] of CRITICAL) {
 	check(`critical: ${label}`, r.impacts.length > 0 && r.ruleIds.includes("write-outside"), JSON.stringify(r));
 }
 
-// ============ 13. dsh 0.1.1-rc.2 契约自检（v1.1.1 修复）============
-console.log("\n[13] dsh 0.1.1-rc.2 契约自检");
+// ============ 13. dsh 契约自检（v1.1.1 + v1.2.1 修复）============
+console.log("\n[13] dsh 契约自检");
 const indexSrc = readFileSync(join(root, "lib/index.js"), "utf8");
 check("inject 含 sessions 服务", indexSrc.includes("'sessions'"));
 check("currentPreset 使用 current(session) 新签名", indexSrc.includes("permissionPresets.current(session)"));
@@ -576,6 +576,11 @@ check("不再传 agent.session.events（旧签名）", !indexSrc.includes("curre
 check("sessionOf 经 sessions.get(agent.id) 回退", indexSrc.includes("sessions.get(agent.id)"));
 check("保留 agent.session 兼容分支", indexSrc.includes("agent.session !== undefined"));
 check("CHANGELOG 已记录 v1.1.1", readFileSync(join(root, "CHANGELOG.md"), "utf8").includes("v1.1.1"));
+// v1.2.1：dsh 0.2.2-rc.1 服务级 subagents.start 已移除 → startActivation
+check("子代理审查使用 startActivation（0.2.2+）", indexSrc.includes("subagents.startActivation("));
+check("保留旧版 subagents.start 兼容分支（<0.2.2）", indexSrc.includes("typeof subagents.startActivation === 'function'") && indexSrc.includes("await subagents.start("));
+check("用 activation.childId 识别审查子代理", indexSrc.includes("activation.childId"));
+check("CHANGELOG 已记录 v1.2.1", readFileSync(join(root, "CHANGELOG.md"), "utf8").includes("v1.2.1"));
 
 // ============ 14. 多客户端 profile 支持（v1.2.0：桌面版 Electron）============
 console.log("\n[14] 多客户端 profile 支持（desktop / web）");

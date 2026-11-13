@@ -1,5 +1,33 @@
 # 更新说明 Changelog
 
+## v1.2.1（2026-11-13）— 适配 dsh 0.2.2-rc.1：子代理审查 API 迁移
+
+> dsh **0.2.2-rc.1** 移除了服务级 `subagents.start(name, request)`（改为 `startActivation(spec)`），
+> 导致 AFA 的 LLM 审查子代理无法启动——动态命令全部降级为人工审批（审计日志显示 `source=degraded`）。
+
+### 🐛 修复
+
+- 新增 `startReviewActivation(prompt, parent, signal)`：
+  - **dsh ≥ 0.2.2**：走 `subagents.startActivation({ provider, label, request:{prompt,parent,outputSchema}, signal, delivery:'caller' })`，
+    用返回的 `activation.childId` 识别/清理审查子代理，结果仍从 `activation.result` 读取（`structured` + `stopReason`）；
+  - **dsh < 0.2.2**：保留原 `subagents.start(...)` 分支（含 `toolFilter:{allow:[]}`），向后兼容；
+- 移除对 `run.localAgent` 的强依赖（0.2.2 的 `SubagentActivation` 没有该字段）；
+- `reviewChildren` 改用 `childId`（= 审查子代理会话 id）登记，门控跳过自身命令的逻辑不变。
+
+### ⚠️ 已知差异（0.2.2 契约限制）
+
+- 新 `SubagentStartRequest` 不再提供 `toolFilter` 字段，审查子代理**无法再通过 API 禁用全部工具**；
+  现由审查提示词约束（"绝不调用任何工具"）+ 子代理自身 agent 预设的工具集兜底。
+
+### ✅ 兼容性核对（dsh 0.2.2-rc.1）
+
+- `permissionPresets.optionOf/current(session)` ✓、`sessions.get` ✓、`sandboxPolicy.resolve({session}).workspaceRoot` ✓、
+  `tools/pre-execute`（`ToolExecution` 结构未变，`{kind:'deny',reason}` 仍合法；新增 `cancel`/`displayReason` 不影响）✓、
+  `userQuestions.ask` ✓、`webServer.register` ✓、`conversation.input.overlay` 槽位 ✓；
+- 测试套件 224 项通过（含 [13] 契约自检新增的 startActivation 检查）。
+
+---
+
 ## v1.2.0（2026-10-14）— 支持桌面版客户端（dsh 0.2.0-rc.2）+ 修复工作区解析
 
 > 旧版安装器把目标 profile **硬编码为 `web`**，因此在 **DeepSeek Harness 桌面版（Electron）**
