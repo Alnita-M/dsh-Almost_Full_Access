@@ -1,5 +1,26 @@
 # 更新说明 Changelog
 
+## v1.2.2（2026-11-18）— 适配 dsh 0.2.2-rc.5：修复 provider 枚举（subagents.list 移除）
+
+> dsh **0.2.2-rc.5** 又移除了 `subagents.list()`（provider registry 改为 `getProvider(name)`），
+> 导致 `providerName()` 抛 `subagents.list is not a function`，LLM 审查失败 →
+> 报"命令审查子代理启动失败，无法自动判定安全性，需人工审批"（fail-closed，命令不会误放行）。
+
+### 🐛 修复
+
+- `providerName()` 重写：
+  - **dsh ≥ 0.2.2-rc.5**：用 `subagents.getProvider('spawn'|'fork')` 探测可用 provider，探测不到时返回默认 `spawn`（让 `startActivation` 给出明确错误而非静默降级）；
+  - **旧版 dsh**：保留 `subagents.list()` 兼容分支；
+- 契约自检新增 `getProvider` / `list` 兼容分支检查，防止同类 API 回归。
+
+### 说明
+
+这是 dsh 0.2.2 系列重构 subagents 服务的第二次适配（1.2.1 修了 `start` → `startActivation`，
+本案修 `list` → `getProvider`）。审查子代理的 `toolFilter` 限制在 0.2.2 契约中不存在，
+仍由审查提示词约束。
+
+---
+
 ## v1.2.1（2026-11-13）— 适配 dsh 0.2.2-rc.1：子代理审查 API 迁移
 
 > dsh **0.2.2-rc.1** 移除了服务级 `subagents.start(name, request)`（改为 `startActivation(spec)`），
