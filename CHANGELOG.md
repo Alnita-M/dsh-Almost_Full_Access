@@ -1,5 +1,20 @@
 # 更新说明 Changelog
 
+## v1.2.3（2026-11-19）— 修复 startActivation 参数形状（平铺 spec）
+
+> dsh 0.2.2-rc.5 下审查仍失败（`source=degraded`）。根因：`SubagentActivationSpec` 是
+> **平铺结构**（`Omit<SubagentStartRequest,'label'|'signal'>` 的 `prompt`/`parent`/`outputSchema`
+> 直接展开在顶层），v1.2.2 误把它们嵌套进 `request: {...}` → `spec.parent` 为 `undefined` →
+> 子代理启动失败。
+
+### 🐛 修复
+
+- `startActivation({ provider, label, prompt, parent, outputSchema, signal, delivery })` 改为平铺传参；
+- 审查失败时新增 `REVIEW-ERROR` 审计日志（含错误消息与堆栈片段），便于以后直接定位；
+- 契约自检新增「平铺 spec（无 request 嵌套）」检查。
+
+---
+
 ## v1.2.2（2026-11-18）— 适配 dsh 0.2.2-rc.5：修复 provider 枚举（subagents.list 移除）
 
 > dsh **0.2.2-rc.5** 又移除了 `subagents.list()`（provider registry 改为 `getProvider(name)`），

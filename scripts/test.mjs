@@ -583,7 +583,10 @@ check("用 activation.childId 识别审查子代理", indexSrc.includes("activat
 // v1.2.2：dsh 0.2.2-rc.5 移除 subagents.list() → 改用 getProvider(name) 探测
 check("provider 探测使用 getProvider（0.2.2-rc.5+）", indexSrc.includes("subagents.getProvider("));
 check("subagents.list 仅作旧版兼容分支", indexSrc.includes("typeof subagents.list === 'function'"));
+// v1.2.3：SubagentActivationSpec 是平铺结构（prompt/parent/outputSchema 在顶层，不能嵌套 request）
+check("startActivation 使用平铺 spec（无 request 嵌套）", !/startActivation\(\{[\s\S]{0,400}?request:\s*\{/.test(indexSrc));
 check("CHANGELOG 已记录 v1.2.2", readFileSync(join(root, "CHANGELOG.md"), "utf8").includes("v1.2.2"));
+check("CHANGELOG 已记录 v1.2.3", readFileSync(join(root, "CHANGELOG.md"), "utf8").includes("v1.2.3"));
 check("CHANGELOG 已记录 v1.2.1", readFileSync(join(root, "CHANGELOG.md"), "utf8").includes("v1.2.1"));
 
 // ============ 14. 多客户端 profile 支持（v1.2.0：桌面版 Electron）============
